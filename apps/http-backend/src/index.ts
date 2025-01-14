@@ -2,9 +2,11 @@ import express, { Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import {JWT_SECRET} from '@repo/backend-common/config'
 import { authMiddleware } from './middleware';
+import client from "@repo/db/client"
 import {CreateUserSchema, SigninSchema, CreateRoomSchema} from '@repo/common/types'
 const PORT = 3000;
 const app = express();
+
 
 app.post("/signup", (req: Request, res:Response)=>{
     const data = CreateUserSchema.safeParse(req.body);

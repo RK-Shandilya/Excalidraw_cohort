@@ -79,7 +79,7 @@ app.post("/room", authMiddleware, async(req: Request, res:Response)=>{
         })
 
         res.json({
-            roomId: 12345,
+            roomId: room.id,
         })
     } catch (err) {
         console.error(err);
@@ -98,6 +98,19 @@ app.get("/chats/:roomId", async(req: Request, res: Response)=> {
         },
         take: 50
     })
+    res.json(messages);
+})
+
+app.get("/room/:slug", async(req: Request, res: Response)=> {
+    const slug = Number(req.params.roomId);
+    const room = await client.room.findFirst({
+        where: {
+            slug
+        },
+    })
+    res.json(
+        room
+    );
 })
 
 app.listen(PORT, () => {

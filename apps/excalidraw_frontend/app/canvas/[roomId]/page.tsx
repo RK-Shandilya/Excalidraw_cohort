@@ -9,6 +9,7 @@ export default async function CanvasPage({params}: {
     console.log(roomId)
 
     return (
-        <Canvas roomId={roomId} />
+        <Canvas roomId={roomId} socket={socket}/>
+
     )
 }

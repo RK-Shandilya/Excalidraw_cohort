@@ -44,11 +44,20 @@ export async function initDraw(canvas: HTMLCanvasElement, roomId: string, socket
         if(clicked) {
             const width = e.clientX - startX;
             const height = e.clientY - startY;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "rgba(0, 0, 0)"
-            ctx.fillRect(0, 0, canvas.width, canvas. height);
+            clearCanvas (existingShapes, canvas, ctx);
             ctx.strokeStyle = "rgba(255, 255, 255)"
-            ctx.strokeRect(startX, startY, width, height);
+
+            // @ts-ignore
+            const selectedTool = window.selectedTool;
+            if(selectedTool === "rect") {
+                ctx.strokeRect(startX, startY, width, height);
+            } else if (selectedTool === "circle") {
+                const radius = Math.max(width, height) / 2;
+                ctx.beginPath();
+                ctx.arc(startX + radius, startY + radius, radius, 0 , 2 * Math.PI);
+                ctx.stroke();
+                ctx.closePath();
+            }
         }
     })
 
@@ -56,18 +65,36 @@ export async function initDraw(canvas: HTMLCanvasElement, roomId: string, socket
         clicked = false
         const width = e.clientX - startX;
         const height = e.clientY - startY;
+
         let shape: Shape | null = null;
-        shape = {
-            type: "rect",
-            x: startX,
-            y: startY,
-            height,
-            width
+        // @ts-ignore
+        const selectedTool = window.selectedTool;
+        if(selectedTool === "rect") {
+            const shape: Shape = {
+                // @ts-ignore
+                type: selectedTool,
+                x: startX,
+                y: startY, 
+                height, 
+                width
+            }
         }
-        if (!shape) {
-            return;
+        else if (selectedTool === "circle") {
+            const radius = Math.max(width, height) / 2;
+            const centerX = startX + radius;
+            const centerY = startY + radius;
+            shape = {
+                type: selectedTool,
+                radius,
+                centerX,
+                centerY
+            }
+        }
+        if(!shape) {
+            return
         }
         existingShapes.push(shape);
+
         socket?.send(JSON.stringify({
             type: "chat",
             message: JSON.stringify({

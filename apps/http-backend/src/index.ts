@@ -12,8 +12,9 @@ app.use(express.json());
 app.use(cors())
 
 app.post("/signup", async (req, res) => {
-
+    console.log(req.body);
     const parsedData = CreateUserSchema.safeParse(req.body);
+    console.log(parsedData);
     if (!parsedData.success) {
         console.log(parsedData.error);
         res.json({
@@ -22,6 +23,12 @@ app.post("/signup", async (req, res) => {
         return;
     }
     try {
+        if(parsedData.data.password !== parsedData.data.confirmPassword) {
+            res.json({
+                message: "Passwords do not match"
+            })
+            return;
+        }
         const hashedPassword = await bcrypt.hash(parsedData.data.password, 10);
         const user = await PrismaClient.user.create({
             data: {
@@ -43,6 +50,7 @@ app.post("/signup", async (req, res) => {
 
 app.post("/signin", async (req, res) => {
     const parsedData = SigninSchema.safeParse(req.body);
+    console.log(parsedData);
     if (!parsedData.success) {
         res.json({
             message: "Incorrect inputs"
@@ -51,12 +59,20 @@ app.post("/signin", async (req, res) => {
     }
 
     // TODO: Compare the hashed pws here
-    const user = await PrismaClient.user.findFirst({
+    const user = await PrismaClient.user.findUnique({
         where: {
-            email: parsedData.data.username,
-            password: parsedData.data.password
+            email: parsedData.data.username
         }
     })
+    console.log(user);
+
+    const comparePassword = await bcrypt.compare(parsedData.data.password, user?.password || "");
+    if(!comparePassword) {
+        res.json({
+            message: "Incorrect password"
+        })
+        return;
+    }
 
     if (!user) {
         res.status(403).json({

@@ -94,7 +94,7 @@ export class Game {
         })
     }
 
-    mouseDownHandler = (e : MouseEvent) => {
+    mouseDownHandler = (e: MouseEvent) => {
         this.clicked = true
         this.startX = e.clientX
         this.startY = e.clientY
@@ -139,7 +139,7 @@ export class Game {
             roomId: this.roomId
         }))
     }
-    mouseMoveHandler = (e: any) => {
+    mouseMoveHandler = (e: MouseEvent) => {
         if (this.clicked) {
             const width = e.clientX - this.startX;
             const height = e.clientY - this.startY;

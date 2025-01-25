@@ -15,10 +15,10 @@ import { useAuth } from '@/app/context/AuthContext';
 
 function Dashboard() {
     const router = useRouter();
-    const { isSignin } = useAuth();
+    const { isSignin, signOut } = useAuth();
   return (
     <div className="min-h-screen bg-white">
-      <header className="bg-gradient-to-b from-cyan-50 to-white">
+      <header className="bg-gradient-to-b from-cyan-200 to-white">
         <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <Shapes className="w-8 h-8 text-cyan-600" />
@@ -26,6 +26,12 @@ function Dashboard() {
           </div>
           <div className="flex items-center space-x-6">
             <Link href="#features" className="text-gray-600 hover:text-gray-900" aria-label="Features">Features</Link>
+            {
+              isSignin ? <button className={`text-gray-600 hover:text-gray-900`} aria-label="Sign Up"
+                onClick={signOut}
+              >Logout</button>
+              : ""
+            }
             <Link href="/signup" className={`text-gray-600 hover:text-gray-900 ${isSignin ? "hidden": ""}`} aria-label="Sign Up">Sign Up</Link>
             <Link href="/signin" className={`text-gray-600 hover:text-gray-900 ${isSignin ? "hidden": ""}`} aria-label="Sign In">Sign In</Link>
             <button className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors"

@@ -1,13 +1,12 @@
 "use client";
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode } from "react";
 
-// Define the shape of the authentication context
+// Define the authentication context
 interface AuthContextType {
   isSignin: boolean;
   token: string | null;
   signIn: (token: string) => void;
   signOut: () => void;
-  signUp: () => void;
 }
 
 // Create the context with a default value
@@ -16,33 +15,36 @@ const AuthContext = createContext<AuthContextType>({
   token: null,
   signIn: () => {},
   signOut: () => {},
-  signUp: () => {},
 });
 
 // Create a provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isSignin, setIsSignin] = useState<boolean>(!!localStorage.getItem('token'));
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [isSignin, setIsSignin] = useState<boolean>(false);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Access localStorage inside useEffect to avoid SSR issues
+  useEffect(() => {
+    const storedToken = localStorage.getItem("token");
+    if (storedToken) {
+      setToken(storedToken);
+      setIsSignin(true);
+    }
+  }, []);
 
   const signIn = (newToken: string) => {
-    localStorage.setItem('token', newToken);
+    localStorage.setItem("token", newToken);
     setToken(newToken);
     setIsSignin(true);
   };
 
-  const signUp = () => {
-    setToken(null);
-    setIsSignin(true);
-  }
-
   const signOut = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem("token");
     setToken(null);
     setIsSignin(false);
   };
 
   return (
-    <AuthContext.Provider value={{ isSignin, token, signIn, signOut, signUp }}>
+    <AuthContext.Provider value={{ isSignin, token, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
@@ -52,7 +54,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

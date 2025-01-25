@@ -1,41 +1,34 @@
 "use client";
 
 import { WS_URL } from "@/config";
-import { initDraw } from "@/draw";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Canvas } from "./Canvas";
 
 export function RoomCanvas({roomId}: {roomId: string}) {
     const [socket, setSocket] = useState<WebSocket | null>(null);
 
     useEffect(() => {
-        console.log("in RoomCanvas useEffect");
         const ws = new WebSocket(`${WS_URL}?token=${localStorage.getItem("token")}`);
 
         ws.onopen = () => {
             setSocket(ws);
             const data = JSON.stringify({
-                type: "join_room",
+                type: "joinRoom",
                 roomId
             });
-            console.log(data);
-            ws.send(data);
-        };
-
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-        };
-
-        return () => {
-            ws.close();
-        };
-    }, [roomId]);
-
+            console.log("onopen data",data);
+            ws.send(data)
+        }
+        
+    }, [])
+   
     if (!socket) {
-        return <div>Connecting to server....</div>;
+        return <div>
+            Connecting to server....
+        </div>
     }
 
     return <div>
         <Canvas roomId={roomId} socket={socket} />
-    </div>;
+    </div>
 }

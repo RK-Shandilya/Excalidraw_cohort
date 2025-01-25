@@ -32,7 +32,7 @@ app.post("/signup", async (req, res) => {
         const hashedPassword = await bcrypt.hash(parsedData.data.password, 10);
         const user = await PrismaClient.user.create({
             data: {
-                email: parsedData.data?.username,
+                email: parsedData.data?.email,
                 // TODO: Hash the pw
                 password: hashedPassword,
                 name: parsedData.data.name
@@ -61,7 +61,7 @@ app.post("/signin", async (req, res) => {
     // TODO: Compare the hashed pws here
     const user = await PrismaClient.user.findUnique({
         where: {
-            email: parsedData.data.username
+            email: parsedData.data.email
         }
     })
     console.log(user);
@@ -80,9 +80,9 @@ app.post("/signin", async (req, res) => {
         })
         return;
     }
-
+    console.log(user.id, JWT_SECRET)
     const token = jwt.sign({
-        userId: user?.id
+        userId: user.id
     }, JWT_SECRET);
 
     res.json({

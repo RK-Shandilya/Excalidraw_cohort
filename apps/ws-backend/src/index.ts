@@ -1,7 +1,7 @@
-import WebSocket ,{ WebSocketServer } from 'ws'
-import jwt, { JwtPayload } from 'jsonwebtoken'
+import WebSocket from 'ws'
+import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '@repo/backend-common/config'
-const wss = new WebSocketServer({ port: 8080 })
+const wss = new WebSocket.Server({ port: 8080 })
  
 interface User {
     ws : WebSocket,
@@ -42,6 +42,7 @@ wss.on("connection", (ws: WebSocket , request) => {
         const parsedData = JSON.parse(data.toString());
         switch (parsedData.type) {
             case "joinRoom":
+                console.log("Joining room");
                 const currentUser = users.find((x)=>x.ws===ws);
                 if (!currentUser) {
                     console.error("User not found for WebSocket connection");
@@ -50,7 +51,7 @@ wss.on("connection", (ws: WebSocket , request) => {
 
                 if (!currentUser.rooms.includes(parsedData.roomId)) {
                     currentUser.rooms.push(parsedData.roomId);
-                }
+                }   
                 break;
             case "leaveRoom":
                 const user = users.find((x)=>x.ws===ws);
@@ -75,5 +76,9 @@ wss.on("connection", (ws: WebSocket , request) => {
                     }
                 })
         }
+    })
+
+    ws.on("error", (error) => {
+        console.error("Error occurred on WebSocket connection:", error);
     })
 })

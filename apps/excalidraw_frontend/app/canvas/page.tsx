@@ -14,7 +14,6 @@ const room = () => {
         />
         <button className='bg-cyan-600 text-white px-4 py-1 rounded-lg hover:bg-cyan-700 transition-colors'
         onClick={() => {
-            
             router.push(`/canvas/${roomId}`);
         }}
         >

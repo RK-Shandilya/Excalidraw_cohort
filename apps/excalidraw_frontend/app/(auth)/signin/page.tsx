@@ -3,7 +3,7 @@ import axios from 'axios';
 import React from 'react';
 import { HTTP_BACKEND } from '@/config';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 const SignIn = () => {
     const router = useRouter();

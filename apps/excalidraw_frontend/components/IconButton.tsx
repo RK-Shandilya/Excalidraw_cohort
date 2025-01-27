@@ -1,5 +1,3 @@
-import { LineChart } from "lucide-react";
-
 export function IconButton({
     icon, onClick, activated
 }: {
@@ -8,7 +6,7 @@ export function IconButton({
     activated: boolean
 }) {
     return (
-        <div className={`pointer rounded-full border p-2 ${activated ? "text-red-800" : "text-white"}`} onClick={onClick}>
+        <div className={`pointer rounded-md p-2 ${activated ? "bg-cyan-700" : ""}`} onClick={onClick}>
             {icon}
         </div>
     )

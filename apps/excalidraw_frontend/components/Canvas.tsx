@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Game } from "@/draw/Game";
 import { Topbar } from "./Topbar";
+  
 
-export type Tool = "selection" | "circle" | "rect" | "pencil" | "line" ;
+
+export type Tool = "rect" | "circle" | "pencil" | "line" | "selection" | "text";
 
 export function Canvas({
     roomId,

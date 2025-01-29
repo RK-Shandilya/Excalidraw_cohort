@@ -1,7 +1,6 @@
 import { IconButton } from "./IconButton";
-import { Circle, Pencil, RectangleHorizontalIcon, Minus, MousePointer } from "lucide-react";
-
-export type Tool = "selection" |"circle" | "rect" | "pencil" | "line";
+import { Circle, Pencil, RectangleHorizontalIcon, Minus, MousePointer, Text } from "lucide-react";
+import { Tool } from "./Canvas";
 
 export function Topbar({selectedTool, setSelectedTool}: {
     selectedTool: Tool,
@@ -32,6 +31,13 @@ export function Topbar({selectedTool, setSelectedTool}: {
                 <IconButton onClick={() => {
                     setSelectedTool("line")
                 }} activated={selectedTool === "line"} icon={<Minus color="white" size={15}/>}></IconButton>
+                <IconButton 
+                    onClick={() => {
+                        setSelectedTool("text")
+                    }}
+                    activated={selectedTool === "text"}
+                    icon={<Text color="white" size={15}/>}
+                />
             </div>
         </div>
 }

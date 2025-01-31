@@ -19,6 +19,10 @@ export function RoomCanvas({roomId}: {roomId: string}) {
             console.log("onopen data",data);
             ws.send(data)
         }
+
+        ws.onerror = (event) => {
+            console.log("onerror", event);
+        }
         
     }, [])
    

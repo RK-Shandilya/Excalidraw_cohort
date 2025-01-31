@@ -1,5 +1,5 @@
 import { IconButton } from "./IconButton";
-import { Circle, Pencil, RectangleHorizontalIcon, Minus, MousePointer, Text } from "lucide-react";
+import { Circle, Pencil, RectangleHorizontalIcon, Minus, MousePointer, TypeIcon, Hand, ArrowRight, Eraser } from "lucide-react";
 import { Tool } from "./Canvas";
 
 export function Topbar({selectedTool, setSelectedTool}: {
@@ -12,6 +12,13 @@ export function Topbar({selectedTool, setSelectedTool}: {
             left: "45%",
         }}>
             <div className="flex gap-2 rounded-md p-2 bg-slate-700">
+                <IconButton 
+                    onClick={() => {
+                        setSelectedTool("pan")
+                    }}
+                    activated={selectedTool === "pan"}
+                    icon={<Hand color="white" size={15}/>}
+                />
                 <IconButton onClick={() => {
                     setSelectedTool("selection")
                 }} activated={selectedTool === "selection"} icon={<MousePointer color="white" size={15} fill={`${selectedTool=="selection" ? "white": "transparent"}`}/>}></IconButton>
@@ -33,10 +40,24 @@ export function Topbar({selectedTool, setSelectedTool}: {
                 }} activated={selectedTool === "line"} icon={<Minus color="white" size={15}/>}></IconButton>
                 <IconButton 
                     onClick={() => {
+                        setSelectedTool("arrow")
+                    }}
+                    activated={selectedTool === "arrow"}
+                    icon={<ArrowRight color="white" size={15}/>}
+                />
+                <IconButton 
+                    onClick={() => {
                         setSelectedTool("text")
                     }}
                     activated={selectedTool === "text"}
-                    icon={<Text color="white" size={15}/>}
+                    icon={<TypeIcon color="white" size={15}/>}
+                />
+                <IconButton 
+                    onClick={() => {
+                        setSelectedTool("eraser")
+                    }}
+                    activated={selectedTool === "eraser"}
+                    icon={<Eraser color="white" size={15}/>}
                 />
             </div>
         </div>

@@ -23,8 +23,15 @@ export function RoomCanvas({roomId}: {roomId: string}) {
         ws.onerror = (event) => {
             console.log("onerror", event);
         }
+
+        return () => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+            setSocket(null);
+        };
         
-    }, [])
+    }, [roomId])
    
     if (!socket) {
         return <div>
@@ -32,7 +39,7 @@ export function RoomCanvas({roomId}: {roomId: string}) {
         </div>
     }
 
-    return <div>
+    return <div className="w-screen h-screen overflow-hidden">
         <Canvas roomId={roomId} socket={socket} />
     </div>
 }

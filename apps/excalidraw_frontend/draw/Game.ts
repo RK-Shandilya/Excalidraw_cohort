@@ -1,2041 +1,813 @@
-import type { Tool } from "@/components/Canvas";
-import { getExistingShapes } from "./http";
-import { Camera } from "@/draw/Camera";
-
-type Shape = {
-  id: string;
-  rotation: number;
-  selected: boolean;
-  strokeColor: string;
-  fillColor: string;
-  strokeWidth: number;
-  opacity: number;
-  strokeStyle: string;
-  locked: boolean;
-  groupId?: string;
-  edges?: string;
-  sloppiness?: number;
-} & (
-  | {
-      type: "rect";
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      cornerRadius?: number;
-    }
-  | {
-      type: "circle";
-      startX: number;
-      startY: number;
-      endX: number;
-      endY: number;
-    }
-  | {
-      type: "pencil";
-      points: { x: number; y: number }[];
-      smoothing: number;
-    }
-  | {
-      type: "line";
-      startX: number;
-      startY: number;
-      endX: number;
-      endY: number;
-      arrowStart?: boolean;
-      arrowEnd?: boolean;
-    }
-  | {
-      type: "text";
-      x: number;
-      y: number;
-      text: string;
-      fontSize: number;
-      fontFamily: string;
-      textAlign: CanvasTextAlign;
-      bold: boolean;
-      italic: boolean;
-    }
-);
-
-type ResizeHandle = {
-  position: "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
-  x: number;
-  y: number;
-};
-
-type SelectionState = {
-  selectedShapeIds: Set<string>;
-  isDragging: boolean;
-  isResizing: boolean;
-  isRotating: boolean;
-  dragStartX: number;
-  dragStartY: number;
-  resizeHandle: ResizeHandle | null;
-  rotationAngle: number;
-  selectionBox: {
-    startX: number;
-    startY: number;
-    endX: number;
-    endY: number;
-  } | null;
-  rotationCenter: { x: number; y: number } | null;
-  initialShapes: { [key: string]: Shape };
-};
-
-const ROTATION_HANDLE_DISTANCE = 90;
+import { Camera } from "./Camera";
+import { Renderer } from "./Renderer";
+import { Scene } from "./Scene";
+import { AppState, ExcalidrawElement, Point } from "./types";
+import { UndoRedoManager } from "./UndoRedoManager";
+import { ToolManager } from "./ToolManager";
 
 export class Game {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
   private camera: Camera;
-  private existingShapes: Shape[];
-  private roomId: string;
-  private clicked: boolean;
-  private startX = 0;
-  private startY = 0;
-  private currentPencilPoints: { x: number; y: number }[] = [];
-  private selectedTool: Tool = "circle";
-  private lineThickness = 2;
+  private renderer: Renderer;
   private socket: WebSocket;
-  private selectionState: SelectionState = {
-    selectedShapeIds: new Set(),
-    isDragging: false,
-    isResizing: false,
-    isRotating: false,
-    dragStartX: 0,
-    dragStartY: 0,
-    resizeHandle: null,
-    rotationAngle: 0,
-    selectionBox: null,
-    rotationCenter: null,
-    initialShapes: {},
-  };
-
-  private scale = 1;
-  private offsetX = 0;
-  private offsetY = 0;
-  private gridSize = 20;
-  private snapToGrid = true;
-
-  private undoStack: Shape[][] = [];
-  private redoStack: Shape[][] = [];
-
-  private groups: Map<string, Set<string>> = new Map();
-  private currentStrokeColor: string = "#ffffff";
-  private currentFillColor: string = "transparent";
-  private currentStrokeWidth: number = 1.5;
-  private currentOpacity: number = 1;
-  private currentStrokeStyle: string = "solid";
-  private currentSloppiness: number = 0;
-  private currentEdges: string = "sharp";
-  private currentArrowEnd: boolean = false;
-
-  private textInput: HTMLInputElement | null = null;
-  private currentText: string = "Text";
-  private currentFontSize: number = 20;
-  private currentFontFamily: string = "Arial";
-  private currentTextAlign: CanvasTextAlign = "left";
-  private currentBold: boolean = false;
-  private currentItalic: boolean = false;
-  private smoothingEnabled: boolean = true;
-  private smoothingLevel: number = 0.5;
-  private isShiftPressed: boolean = false;
-  private isPanning = false;
-  private panStartX = 0;
-  private panStartY = 0;
+  private roomId: string;
+  public scene: Scene;
+  private state: AppState;
+  private undoRedoManager: UndoRedoManager;
+  private toolManager: ToolManager;
+  private canvas: HTMLCanvasElement;
+  private selectionCallback?: (element: ExcalidrawElement | null) => void;
+  private elementUpdateCallback?: (elements: ExcalidrawElement[]) => void;
+  private shouldRender = true;
+  
+  private eraserPath: Point[] = [];
+  private eraserElement: ExcalidrawElement | null = null;
+  private eraserCursor: HTMLDivElement | null = null;
+  private ERASER_SIZE = 20;
+  private lastRenderTime = 0;
+  private readonly RENDER_THROTTLE = 16; // ~60fps
+  private isDrawing = false;
 
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
+    console.log("Initializing Game class...", canvas);
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d")!;
-    this.existingShapes = [];
-    this.roomId = roomId;
     this.camera = new Camera(canvas);
+    this.scene = new Scene();
+    this.renderer = new Renderer(canvas, this.camera);
     this.socket = socket;
-    this.clicked = false;
-    this.init();
-    this.setupCanvas();
-    this.initHandlers();
-    this.initMouseHandlers();
-  }
+    this.roomId = roomId;
+    
+    this.canvas.addEventListener("mouseleave", this.handleMouseLeave);
 
-  private setupCanvas = () => {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  };
+    this.createEraserCursor();
+    this.startRenderLoop();
 
-  initHandlers() {
-    this.socket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-
-      if (message.type === "chat") {
-        const parsedData = JSON.parse(message.message);
-
-        if (parsedData.action === "delete") {
-          this.existingShapes = this.existingShapes.filter(
-            (shape) => !parsedData.shapeIds.includes(shape.id)
-          );
-        } else if (parsedData.shape) {
-          const existingIndex = this.existingShapes.findIndex(
-            (shape) => shape.id === parsedData.shape.id
-          );
-
-          if (existingIndex !== -1) {
-            this.existingShapes[existingIndex] = parsedData.shape;
-          } else {
-            this.existingShapes.push(parsedData.shape);
-          }
-        }
-
-        this.clearCanvas();
-      }
+    this.state = {
+      currentTool: "selection",
+      draggingElement: null,
+      selectedElements: [],
+      isResizing: false,
+      isRotating: false,
+      isPanning: false,
+      startBoundingBox: null,
     };
 
-    window.addEventListener("keydown", this.keyDownHandler);
+    this.undoRedoManager = new UndoRedoManager();
+    this.toolManager = new ToolManager(this.state);
+
+    this.setupEventListeners();
+    this.setupSceneListener();
+    this.startRenderLoop();
   }
 
-  private keyDownHandler = (e: KeyboardEvent) => {
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (this.selectionState.selectedShapeIds.size > 0) {
-        this.existingShapes = this.existingShapes.filter(
-          (shape) => !this.selectionState.selectedShapeIds.has(shape.id)
-        );
-        this.selectionState.selectedShapeIds.clear();
-        this.clearCanvas();
+  private createEraserCursor() {
+    this.eraserCursor = document.createElement("div");
+    const style = this.eraserCursor.style;
+    style.position = "fixed";
+    style.width = `${this.ERASER_SIZE}px`;
+    style.height = `${this.ERASER_SIZE}px`;
+    style.border = "1.5px solid #666";
+    style.borderRadius = "50%";
+    style.pointerEvents = "none";
+    style.display = "none";
+    style.zIndex = "1000";
+    document.body.appendChild(this.eraserCursor);
+  }
+
+  public renderSelectionBox() {
+    if (!this.state.selectedElements.length) return null;
+    
+    const element = this.state.selectedElements[0];
+    if (!element) return null;
+  
+    // Convert world coordinates to screen coordinates
+    const screenPos = this.camera.worldToScreen(element.x, element.y);
+    const zoom = this.camera.getViewport().zoom; // Use zoom from viewport
+    
+    return {
+      element,
+      screenBounds: {
+        x: screenPos.x,
+        y: screenPos.y,
+        width: (element.width || 0) * zoom,
+        height: (element.height || 0) * zoom,
+        angle: element.angle || 0
+      }
+    };
+  }
+
+  public clearSelection() {
+    if (this.state.selectedElements.length > 0) {
+      this.state.selectedElements = [];
+      if (this.selectionCallback) {
+        this.selectionCallback(null);
+      }
+      this.render();
+    }
+  }
+
+  public isClickingElement(e: MouseEvent): boolean {
+    const point = this.camera.screenToWorld(e.offsetX, e.offsetY);
+    const clickedElement = this.findElementAtPoint(point);
+    return clickedElement !== null;
+  }
+
+  get elements(): ExcalidrawElement[] {
+    return this.scene.getElements();
+  }
+
+  get selectedElement(): ExcalidrawElement | null {
+    return this.state.selectedElements[0] || null;
+  }
+
+  set selectedElement(element: ExcalidrawElement | null) {
+    this.setSelectedElements(element ? [element] : []);
+  }
+
+  private showEraserCursor(x: number, y: number) {
+    if (!this.eraserCursor) return;
+
+    this.eraserCursor.style.display = "block";
+    this.eraserCursor.style.left = `${x - this.ERASER_SIZE / 2}px`;
+    this.eraserCursor.style.top = `${y - this.ERASER_SIZE / 2}px`;
+  }
+
+  private hideEraserCursor() {
+    if (this.eraserCursor) {
+      this.eraserCursor.style.display = "none";
+    }
+  }
+
+  private setupSceneListener() {
+    // Listen for changes in the scene (e.g., when elements are added, updated, or deleted)
+    this.scene.addUpdateListener((elements: ExcalidrawElement[]) => {
+      // Re-render the canvas whenever the scene changes
+      this.render();
+
+      // Notify external listeners (e.g., for undo/redo or WebSocket updates)
+      if (this.elementUpdateCallback) {
+        this.elementUpdateCallback(elements);
+      }
+
+      // Optionally, send updates to the server via WebSocket
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         this.socket.send(
           JSON.stringify({
-            type: "chat",
-            message: JSON.stringify({
-              action: "delete",
-              shapeIds: Array.from(this.selectionState.selectedShapeIds),
-            }),
+            type: "scene-update",
             roomId: this.roomId,
+            elements: elements,
           })
         );
       }
-    }
-
-    if (e.ctrlKey && e.key === "c") {
-      this.copySelectedShapes();
-    }
-
-    if (e.ctrlKey && e.key === "v") {
-      this.pasteShapes();
-    }
-
-    if (e.ctrlKey && e.key === "a") {
-      e.preventDefault();
-      this.selectAllShapes();
-    }
-
-    if (e.ctrlKey && e.key === "z") {
-      this.undo();
-    }
-
-    if (e.ctrlKey && e.key === "y") {
-      this.redo();
-    }
-
-    if (e.ctrlKey && e.key === "g") {
-      this.groupSelectedShapes();
-    }
-
-    if (e.key === "Escape") {
-      this.selectionState.selectedShapeIds.clear();
-      this.clearCanvas();
-    }
-  };
-
-  public setStrokeColor(color: string) {
-    this.currentStrokeColor = color;
-    this.updateSelectedShapes({ strokeColor: color });
-  }
-
-  public setFillColor(color: string) {
-    this.currentFillColor = color;
-    this.updateSelectedShapes({ fillColor: color });
-  }
-
-  public setStrokeWidth(width: number) {
-    this.currentStrokeWidth = width;
-    this.updateSelectedShapes({ strokeWidth: width });
-  }
-
-  public setOpacity(opacity: number) {
-    this.currentOpacity = opacity;
-    this.updateSelectedShapes({ opacity });
-  }
-
-  public setStrokeStyle(style: string) {
-    this.currentStrokeStyle = style;
-    this.updateSelectedShapes({ strokeStyle: style });
-  }
-
-  public setSloppiness(level: number) {
-    this.currentSloppiness = level;
-    this.updateSelectedShapes({ sloppiness: level });
-  }
-
-  public setEdges(edges: string) {
-    this.currentEdges = edges;
-    this.updateSelectedShapes({ edges });
-  }
-
-  private updateSelectedShapes(properties: {
-    strokeColor?: string;
-    fillColor?: string;
-    strokeWidth?: number;
-    opacity?: number;
-    strokeStyle?: string;
-    sloppiness?: number;
-    edges?: string;
-  }) {
-    if (this.selectionState.selectedShapeIds.size > 0) {
-      this.existingShapes = this.existingShapes.map((shape) => {
-        if (this.selectionState.selectedShapeIds.has(shape.id)) {
-          return { ...shape, ...properties };
-        }
-        return shape;
-      });
-      this.clearCanvas();
-      this.emitShapeUpdates();
-    }
-  }
-
-  private handleTextInput = (e: MouseEvent) => {
-    const x = e.pageX - this.canvas.offsetLeft;
-    const y = e.pageY - this.canvas.offsetTop;
-
-    if (this.selectedTool === "text") {
-      if (this.textInput) {
-        this.textInput.remove();
-        this.textInput = null;
-      }
-
-      this.textInput = document.createElement("input");
-      this.textInput.type = "text";
-      this.textInput.style.position = "absolute";
-      this.textInput.style.left = `${x}px`;
-      this.textInput.style.top = `${y}px`;
-      this.textInput.style.fontSize = `${this.currentFontSize}px`;
-      this.textInput.style.fontFamily = this.currentFontFamily;
-      this.textInput.style.color = this.currentStrokeColor;
-      this.textInput.style.background = "transparent";
-      this.textInput.style.border = "none";
-      this.textInput.style.outline = "none";
-      this.textInput.value = this.currentText || "Text";
-
-      this.canvas.parentElement?.appendChild(this.textInput);
-      this.textInput.focus();
-
-      this.textInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          const newText = this.textInput?.value || "Text";
-          const newShape: Shape = {
-            id: crypto.randomUUID(),
-            type: "text",
-            x,
-            y,
-            text: newText,
-            fontSize: this.currentFontSize,
-            fontFamily: this.currentFontFamily,
-            textAlign: this.currentTextAlign,
-            bold: this.currentBold,
-            italic: this.currentItalic,
-            rotation: 0,
-            selected: false,
-            strokeColor: this.currentStrokeColor,
-            fillColor: "transparent",
-            strokeWidth: this.lineThickness,
-            opacity: 1,
-            strokeStyle: this.currentStrokeStyle,
-            locked: false,
-          };
-          this.existingShapes.push(newShape);
-          this.clearCanvas();
-          this.emitShapeUpdates();
-
-          this.textInput?.remove();
-          this.textInput = null;
-        }
-      });
-
-      this.textInput.addEventListener("blur", () => {
-        this.textInput?.remove();
-        this.textInput = null;
-      });
-    }
-  };
-
-  groupSelectedShapes() {
-    if (this.selectionState.selectedShapeIds.size < 2) return;
-
-    const groupId = crypto.randomUUID();
-    const selectedShapes = Array.from(this.selectionState.selectedShapeIds);
-
-    this.groups.set(groupId, new Set(selectedShapes));
-
-    this.existingShapes = this.existingShapes.map((shape) => {
-      if (selectedShapes.includes(shape.id)) {
-        return { ...shape, groupId };
-      }
-      return shape;
-    });
-
-    this.clearCanvas();
-  }
-
-  ungroup() {
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
-    );
-
-    const groupIds = new Set(
-      selectedShapes.map((shape) => shape.groupId).filter(Boolean)
-    );
-
-    groupIds.forEach((groupId) => {
-      if (groupId) {
-        this.groups.delete(groupId);
-        this.existingShapes = this.existingShapes.map((shape) => {
-          if (shape.groupId === groupId) {
-            const { groupId: _, ...rest } = shape;
-            return rest;
-          }
-          return shape;
-        });
-      }
-    });
-
-    this.clearCanvas();
-  }
-
-  mouseLeaveHandler = () => {
-    this.clicked = false;
-    this.currentPencilPoints = [];
-
-    if (
-      this.selectionState.isDragging ||
-      this.selectionState.isResizing ||
-      this.selectionState.isRotating
-    ) {
-      this.emitShapeUpdates();
-    }
-
-    this.selectionState.isDragging = false;
-    this.selectionState.isResizing = false;
-    this.selectionState.isRotating = false;
-    this.selectionState.resizeHandle = null;
-    this.selectionState.rotationCenter = null;
-    this.selectionState.initialShapes = {};
-
-    this.clearCanvas();
-  };
-
-  toggleLock(shapeIds: string[]) {
-    this.existingShapes = this.existingShapes.map((shape) => {
-      if (shapeIds.includes(shape.id)) {
-        return { ...shape, locked: !shape.locked };
-      }
-      return shape;
-    });
-    this.clearCanvas();
-  }
-
-  alignShapes(
-    alignment: "left" | "center" | "right" | "top" | "middle" | "bottom"
-  ) {
-    if (this.selectionState.selectedShapeIds.size < 2) return;
-
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
-    );
-
-    const bounds = this.getSelectionBounds(selectedShapes);
-
-    selectedShapes.forEach((shape) => {
-      const shapeBounds = this.getShapeBounds(shape);
-      let dx = 0;
-      let dy = 0;
-
-      switch (alignment) {
-        case "left":
-          dx = bounds.x - shapeBounds.x;
-          break;
-        case "center":
-          dx =
-            bounds.x +
-            bounds.width / 2 -
-            (shapeBounds.x + shapeBounds.width / 2);
-          break;
-        case "right":
-          dx = bounds.x + bounds.width - (shapeBounds.x + shapeBounds.width);
-          break;
-        case "top":
-          dy = bounds.y - shapeBounds.y;
-          break;
-        case "middle":
-          dy =
-            bounds.y +
-            bounds.height / 2 -
-            (shapeBounds.y + shapeBounds.height / 2);
-          break;
-        case "bottom":
-          dy = bounds.y + bounds.height - (shapeBounds.y + shapeBounds.height);
-          break;
-      }
-
-      this.moveShape(shape, dx, dy);
-    });
-
-    this.clearCanvas();
-    this.emitShapeUpdates();
-  }
-
-  distributeShapes(direction: "horizontal" | "vertical") {
-    if (this.selectionState.selectedShapeIds.size < 3) return;
-
-    const selectedShapes = this.existingShapes
-      .filter((shape) => this.selectionState.selectedShapeIds.has(shape.id))
-      .sort((a, b) => {
-        const boundsA = this.getShapeBounds(a);
-        const boundsB = this.getShapeBounds(b);
-        return direction === "horizontal"
-          ? boundsA.x - boundsB.x
-          : boundsA.y - boundsB.y;
-      });
-
-    const firstShape = selectedShapes[0];
-    const lastShape = selectedShapes[selectedShapes.length - 1];
-    const firstBounds = this.getShapeBounds(firstShape);
-    const lastBounds = this.getShapeBounds(lastShape);
-
-    const totalSpace =
-      direction === "horizontal"
-        ? lastBounds.x - (firstBounds.x + firstBounds.width)
-        : lastBounds.y - (firstBounds.y + firstBounds.height);
-
-    const spacing = totalSpace / (selectedShapes.length - 1);
-
-    selectedShapes.slice(1, -1).forEach((shape, index) => {
-      const shapeBounds = this.getShapeBounds(shape);
-      const targetPosition =
-        direction === "horizontal"
-          ? firstBounds.x + firstBounds.width + spacing * (index + 1)
-          : firstBounds.y + firstBounds.height + spacing * (index + 1);
-
-      const currentPosition =
-        direction === "horizontal" ? shapeBounds.x : shapeBounds.y;
-
-      const delta = targetPosition - currentPosition;
-      this.moveShape(
-        shape,
-        direction === "horizontal" ? delta : 0,
-        direction === "horizontal" ? 0 : delta
-      );
-    });
-
-    this.clearCanvas();
-    this.emitShapeUpdates();
-  }
-
-  public destroy() {
-    this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
-    this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
-    this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
-    this.canvas.removeEventListener("mouseleave", this.mouseLeaveHandler);
-    this.camera.cleanup();
-    window.removeEventListener("resize", this.setupCanvas);
-    window.removeEventListener("keydown", this.keyDownHandler);
-    if (this.socket.readyState === WebSocket.OPEN) {
-      this.socket.close();
-    }
-    this.existingShapes = [];
-    this.selectionState = {
-      selectedShapeIds: new Set(),
-      isDragging: false,
-      isResizing: false,
-      isRotating: false,
-      dragStartX: 0,
-      dragStartY: 0,
-      resizeHandle: null,
-      rotationAngle: 0,
-      selectionBox: null,
-      rotationCenter: null,
-      initialShapes: {},
-    };
-    this.clicked = false;
-    this.currentPencilPoints = [];
-    this.clearCanvas();
-  }
-
-  private copiedShapes: Shape[] = [];
-
-  private pasteShapes() {
-    if (this.copiedShapes.length === 0) return;
-    this.selectionState.selectedShapeIds.clear();
-    const offset = 20;
-    const pastedShapes = this.copiedShapes.map((shape) => {
-      const newShape = { ...shape, id: crypto.randomUUID() };
-      this.moveShape(newShape, offset, offset);
-      this.selectionState.selectedShapeIds.add(newShape.id);
-      return newShape;
-    });
-    this.existingShapes.push(...pastedShapes);
-    this.clearCanvas();
-    pastedShapes.forEach((shape) => {
-      this.socket.send(
-        JSON.stringify({
-          type: "chat",
-          message: JSON.stringify({ shape }),
-          roomId: this.roomId,
-        })
-      );
     });
   }
 
-  private copySelectedShapes() {
-    this.copiedShapes = this.existingShapes
-      .filter((shape) => this.selectionState.selectedShapeIds.has(shape.id))
-      .map((shape) => ({
-        ...shape,
-        id: crypto.randomUUID(),
-      }));
+  public resetCamera() {
+    this.camera.resetViewport();
+    this.render();
   }
 
-  private selectAllShapes() {
-    this.existingShapes.forEach((shape) => {
-      this.selectionState.selectedShapeIds.add(shape.id);
-    });
-    this.clearCanvas();
-  }
-
-  private initMouseHandlers() {
-    this.canvas.addEventListener("mousedown", this.mouseDownHandler);
-    this.canvas.addEventListener("mouseup", this.mouseUpHandler);
-    this.canvas.addEventListener("mousemove", this.mouseMoveHandler);
+  private setupEventListeners() {
+    this.canvas.addEventListener("mousedown", this.handleMouseDown);
+    this.canvas.addEventListener("mousemove", this.handleMouseMove);
+    this.canvas.addEventListener("mouseup", this.handleMouseUp);
     this.canvas.addEventListener("dblclick", this.handleDoubleClick);
-    this.canvas.addEventListener("click", this.handleTextInput);
-    this.canvas.addEventListener("mouseleave", () => {
-      this.clicked = false;
-      this.currentPencilPoints = [];
-    });
   }
 
-  private drawSelectionBox() {
-    if (!this.selectionState.selectionBox) return;
-    const { startX, startY, endX, endY } = this.selectionState.selectionBox;
-    this.ctx.save();
-    this.ctx.strokeStyle = "#0096fd";
-    this.ctx.setLineDash([5, 5]);
-    this.ctx.strokeRect(
-      Math.min(startX, endX),
-      Math.min(startY, endY),
-      Math.abs(endX - startX),
-      Math.abs(endY - startY)
-    );
-    this.ctx.restore();
-  }
+  private handleDoubleClick = (event: MouseEvent) => {
+    const point = this.camera.screenToWorld(event.clientX, event.clientY);
 
-  private applyRotationToPoint(
-    point: { x: number; y: number },
-    center: { x: number; y: number },
-    angle: number
+    // Check if we clicked on an existing text element
+    const element = this.findElementAtPoint(point);
+    if (element?.type === "text") {
+      this.editExistingText(element, event.clientX, event.clientY);
+    } else if (this.state.currentTool === "text") {
+      this.createTextInputField(point, event.clientX, event.clientY);
+    }
+  };
+
+  private editExistingText(
+    element: ExcalidrawElement,
+    screenX: number,
+    screenY: number
   ) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return {
-      x: cos * (point.x - center.x) + sin * (point.y - center.y) + center.x,
-      y: -sin * (point.x - center.x) + cos * (point.y - center.y) + center.y,
+    const input = this.createInputElement(screenX, screenY);
+    input.value = element.text || "";
+
+    const originalElement = { ...element };
+
+    input.onblur = () => {
+      const newText = input.value.trim();
+      if (newText && newText !== originalElement.text) {
+        this.scene.updateElement({
+          ...element,
+          text: newText,
+        });
+      } else if (!newText) {
+        // Remove element if text is empty
+        element.isDeleted = true;
+        this.scene.updateElement(element);
+      }
+      document.body.removeChild(input);
+      this.render();
     };
+
+    document.body.appendChild(input);
+    input.focus();
+    input.select(); // Select all text for easy editing
   }
 
-  public rotateSelectedShapes(angle: number) {
-    if (this.selectionState.selectedShapeIds.size === 0) return;
+  private createInputElement(
+    screenX: number,
+    screenY: number
+  ): HTMLTextAreaElement {
+    const textarea = document.createElement("textarea");
+    const style = textarea.style;
 
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
-    );
+    style.position = "fixed";
+    style.left = `${screenX}px`;
+    style.top = `${screenY}px`;
+    style.minWidth = "50px";
+    style.minHeight = "30px";
+    style.padding = "4px";
+    style.border = "none";
+    style.outline = "none";
+    style.overflow = "hidden";
+    style.resize = "none";
+    style.background = "transparent";
+    style.font = `${20}px Arial`;
+    style.color = "#000";
+    style.zIndex = "1000";
+    style.whiteSpace = "pre";
 
-    const bounds = this.getSelectionBounds(selectedShapes);
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-
-    selectedShapes.forEach((shape) => {
-      shape.rotation = (shape.rotation + angle) % (Math.PI * 2);
+    // Auto-resize as user types
+    textarea.addEventListener("input", () => {
+      style.height = "auto";
+      style.width = "auto";
+      style.height = `${textarea.scrollHeight}px`;
+      style.width = `${textarea.scrollWidth}px`;
     });
 
-    this.clearCanvas();
-    this.emitShapeUpdates();
+    return textarea;
   }
 
-  private drawRotatedShape(shape: Shape) {
-    this.ctx.save();
-    const bounds = this.getShapeBounds(shape);
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-
-    this.ctx.translate(centerX, centerY);
-    this.ctx.rotate(shape.rotation);
-    this.ctx.translate(-centerX, -centerY);
-
-    this.drawShape(shape);
-
-    if (this.selectionState.selectedShapeIds.has(shape.id)) {
-      const handleDistance = Math.max(bounds.width, bounds.height) / 2 + 30;
-      const handleX = centerX;
-      const handleY = centerY - handleDistance;
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(centerX, centerY);
-      this.ctx.lineTo(handleX, handleY);
-      this.ctx.strokeStyle = "#0096fd";
-      this.ctx.stroke();
-
-      this.ctx.beginPath();
-      this.ctx.arc(handleX, handleY, 5, 0, Math.PI * 2);
-      this.ctx.fillStyle = "#ffffff";
-      this.ctx.fill();
-      this.ctx.strokeStyle = "#0096fd";
-      this.ctx.stroke();
-    }
-
-    this.ctx.restore();
-  }
-
-  private drawShape(shape: Shape) {
-    this.ctx.globalAlpha = shape.opacity;
-    this.ctx.strokeStyle = shape.strokeColor || "#ffffff";
-    this.ctx.fillStyle = shape.fillColor || "transparent";
-    this.ctx.lineWidth = shape.strokeWidth;
-
-    if (shape.strokeStyle === "dashed") {
-      this.ctx.setLineDash([10, 5]);
-    } else if (shape.strokeStyle === "dotted") {
-      this.ctx.setLineDash([2, 5]);
-    } else {
-      this.ctx.setLineDash([]);
-    }
-
-    switch (shape.type) {
-      case "rect":
-        this.ctx.beginPath();
-        this.ctx.roundRect(
-          shape.x,
-          shape.y,
-          shape.width,
-          shape.height,
-          shape.cornerRadius || 0
-        );
-        this.ctx.stroke();
-        if (shape.fillColor !== "transparent") {
-          this.ctx.fill();
-        }
-        break;
-
-      case "circle":
-        this.ctx.beginPath();
-        const centerX = (shape.startX + shape.endX) / 2;
-        const centerY = (shape.startY + shape.endY) / 2;
-        const radiusX = Math.abs(shape.endX - shape.startX) / 2;
-        const radiusY = Math.abs(shape.endY - shape.startY) / 2;
-        const radius = Math.max(radiusX, radiusY);
-        this.ctx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
-        this.ctx.stroke();
-        if (shape.fillColor !== "transparent") {
-          this.ctx.fill();
-        }
-        break;
-
-      case "line":
-        this.ctx.beginPath();
-        this.ctx.moveTo(shape.startX, shape.startY);
-        this.ctx.lineTo(shape.endX, shape.endY);
-        this.ctx.stroke();
-        break;
-
-      case "pencil":
-        if (shape.points.length > 1) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(shape.points[0].x, shape.points[0].y);
-          shape.points.slice(1).forEach((point) => {
-            this.ctx.lineTo(point.x, point.y);
-          });
-          this.ctx.stroke();
-        }
-        break;
-
-      case "text":
-        this.ctx.font = `${shape.bold ? "bold" : ""} ${shape.italic ? "italic" : ""} ${shape.fontSize}px ${shape.fontFamily}`;
-        this.ctx.textAlign = shape.textAlign;
-        this.ctx.fillStyle = shape.strokeColor || "#ffffff";
-        this.ctx.fillText(shape.text, shape.x, shape.y);
-        break;
-    }
-    this.ctx.globalAlpha = 1;
-  }
-
-  private init() {
-    this.ctx.strokeStyle = "#ffffff";
-    this.ctx.fillStyle = "#000000";
-    this.ctx.lineWidth = this.lineThickness;
-    this.clearCanvas();
-    getExistingShapes(this.roomId).then((shapes) => {
-      this.existingShapes = shapes;
-      this.clearCanvas();
-    });
-  }
-
-  private clearCanvas() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.fillStyle = "#000000";
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.lineWidth = this.lineThickness;
-    this.existingShapes.forEach((shape) => this.drawRotatedShape(shape));
-    if (this.selectionState.selectedShapeIds.size > 0) {
-      this.drawSelectionOverlay();
-    }
-    if (this.selectionState.selectionBox) {
-      this.drawSelectionBox();
-    }
-  }
-
-  mouseDownHandler = (e: MouseEvent) => {
-    const x = e.pageX - this.canvas.offsetLeft;
-    const y = e.pageY - this.canvas.offsetTop;
-
-    if (this.selectedTool === "pan") {
-      this.isPanning = true;
-      this.panStartX = x;
-      this.panStartY = y;
+  private handleMouseDown = (event: MouseEvent) => {
+    this.isDrawing = true;
+    const point = this.camera.screenToWorld(event.clientX, event.clientY);
+  
+    if (this.state.currentTool === "pan") {
+      this.state.isPanning = true;
       return;
     }
+  
+    if (this.state.currentTool === "selection") {
+      const clickedElement = this.findElementAtPoint(point);
+      if (clickedElement) {
+        this.handleSelection(point);
+        // Don't clear selection when clicking on an element
+        event.stopPropagation();
+      }
+      return;
+    }
+  
+    // Handle other tools (rect, circle, line, etc.)
+    if (["rect", "circle", "line", "arrow"].includes(this.state.currentTool)) {
+      this.startDrawingShape(
+        point,
+        this.state.currentTool as "rect" | "circle" | "line" | "arrow"
+      );
+    } else if (this.state.currentTool === "pencil") {
+      this.startFreeDraw(point);
+    } else if (this.state.currentTool === "eraser") {
+      this.startErasing(point);
+    }
+  };
 
-    if (this.selectedTool === "selection") {
-      const selectedIndex = this.findSelectedShape(x, y);
-      const selectedShape =
-        selectedIndex !== -1 ? this.existingShapes[selectedIndex] : null;
+  private handleMouseLeave = () => {
+    this.hideEraserCursor();
+    if (this.state.isPanning) {
+      this.state.isPanning = false;
+    }
+    if (this.state.draggingElement) {
+      this.handleMouseUp();
+    }
+  };
 
-      if (selectedShape) {
-        const bounds = this.getShapeBounds(selectedShape);
-        const centerX = bounds.x + bounds.width / 2;
-        const centerY = bounds.y + bounds.height / 2;
-        const rotationHandleY = centerY - ROTATION_HANDLE_DISTANCE;
-
-        if (
-          Math.abs(x - centerX) < 10 &&
-          Math.abs(y - rotationHandleY) < 10 &&
-          this.selectionState.selectedShapeIds.has(selectedShape.id)
-        ) {
-          this.startRotation(x, y);
-          return;
+  private startRenderLoop() {
+    const animate = () => {
+      // Remove the isDrawing check and use shouldRender instead
+      if (this.shouldRender) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastRenderTime >= this.RENDER_THROTTLE) {
+          this.render();
+          this.lastRenderTime = currentTime;
         }
+      }
+      requestAnimationFrame(animate);
+    };
+    animate();
+  }
 
-        if (e.shiftKey) {
-          if (this.selectionState.selectedShapeIds.has(selectedShape.id)) {
-            this.selectionState.selectedShapeIds.delete(selectedShape.id);
-          } else {
-            this.selectionState.selectedShapeIds.add(selectedShape.id);
-          }
-        } else {
-          if (!this.selectionState.selectedShapeIds.has(selectedShape.id)) {
-            this.selectionState.selectedShapeIds.clear();
-            this.selectionState.selectedShapeIds.add(selectedShape.id);
-          }
-        }
+  private startErasing(point: Point) {
+    this.eraserPath = [point];
 
-        const resizeHandle = this.isPointInResizeHandle(x, y);
-        if (resizeHandle) {
-          this.selectionState.isResizing = true;
-          this.selectionState.resizeHandle = resizeHandle;
-        } else {
-          this.selectionState.isDragging = true;
-        }
+    // Create a visual element for the eraser path
+    this.eraserElement = {
+      id: crypto.randomUUID(),
+      type: "pencil",
+      x: point.x,
+      y: point.y,
+      width: 0,
+      height: 0,
+      angle: 0,
+      strokeColor: "rgba(144, 144, 144, 0.1)", // Very light gray
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: this.ERASER_SIZE,
+      roughness: 0,
+      opacity: 0.3,
+      points: [point],
+      isEraser: true,
+    };
 
-        this.selectionState.selectedShapeIds.forEach((id) => {
-          const shape = this.existingShapes.find((s) => s.id === id);
-          if (shape) {
-            this.selectionState.initialShapes[id] = { ...shape };
-          }
-        });
-      } else {
-        if (!e.shiftKey) {
-          this.selectionState.selectedShapeIds.clear();
-        }
-        this.selectionState.selectionBox = {
-          startX: x,
-          startY: y,
-          endX: x,
-          endY: y,
+    this.state.draggingElement = this.eraserElement;
+    this.scene.addElement(this.eraserElement);
+  }
+
+  private startDrawingShape(
+    point: Point,
+    type: "rect" | "circle" | "line" | "arrow"
+  ) {
+    const element: ExcalidrawElement = {
+      id: crypto.randomUUID(),
+      type, // Use "rect", "circle", "line", or "arrow"
+      x: point.x,
+      y: point.y,
+      width: 0,
+      height: 0,
+      angle: 0,
+      strokeColor: "#000000",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 1,
+    };
+    this.state.draggingElement = element;
+    this.scene.addElement(element);
+  }
+
+  private startFreeDraw(point: Point) {
+    const element: ExcalidrawElement = {
+      id: crypto.randomUUID(),
+      type: "pencil",
+      x: point.x,
+      y: point.y,
+      width: 0,
+      height: 0,
+      angle: 0,
+      strokeColor: "#000000",
+      backgroundColor: "",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 1,
+      points: [point],
+    };
+
+    this.state.draggingElement = element;
+    this.scene.addElement(element);
+  }
+
+  private createTextInputField(
+    worldPoint: Point,
+    screenX: number,
+    screenY: number
+  ) {
+    const textarea = this.createInputElement(screenX, screenY);
+
+    textarea.onblur = () => {
+      const text = textarea.value.trim();
+      if (text) {
+        const element: ExcalidrawElement = {
+          id: crypto.randomUUID(),
+          type: "text",
+          x: worldPoint.x,
+          y: worldPoint.y,
+          width: textarea.offsetWidth,
+          height: textarea.offsetHeight,
+          angle: 0,
+          strokeColor: "#000000",
+          backgroundColor: "transparent",
+          fillStyle: "solid",
+          strokeWidth: 1,
+          roughness: 1,
+          opacity: 1,
+          text: text,
+          fontSize: 20,
+          fontFamily: "Arial",
+          textAlign: "left",
         };
+
+        this.scene.addElement(element);
+        this.render();
       }
 
-      this.selectionState.dragStartX = x;
-      this.selectionState.dragStartY = y;
-      this.clearCanvas();
-      return;
-    }
-
-    this.clicked = true;
-    this.startX = x;
-    this.startY = y;
-
-    if (this.selectedTool === "pencil") {
-      this.currentPencilPoints = [{ x: this.startX, y: this.startY }];
-    }
-  };
-
-  public setTool(tool: Tool) {
-    this.selectedTool = tool;
-  }
-
-  private getSelectionBounds(shapes: Shape[]): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } {
-    if (shapes.length === 0) {
-      return { x: 0, y: 0, width: 0, height: 0 };
-    }
-
-    const bounds = shapes.map((shape) => this.getShapeBounds(shape));
-    const minX = Math.min(...bounds.map((b) => b.x));
-    const minY = Math.min(...bounds.map((b) => b.y));
-    const maxX = Math.max(...bounds.map((b) => b.x + b.width));
-    const maxY = Math.max(...bounds.map((b) => b.y + b.height));
-
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
+      document.body.removeChild(textarea);
     };
+
+    textarea.onkeydown = (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        textarea.blur();
+      }
+      if (e.key === "Escape") {
+        textarea.value = "";
+        textarea.blur();
+      }
+    };
+
+    document.body.appendChild(textarea);
+    textarea.focus();
   }
 
-  private isPointInResizeHandle(x: number, y: number): ResizeHandle | null {
-    if (this.selectionState.selectedShapeIds.size === 0) return null;
+  private handleSelection(point: Point) {
+    const element = this.findElementAtPoint(point);
+    
+    if (element) {
+      this.state.selectedElements = [element];
+      if (this.selectionCallback) {
+        this.selectionCallback(element);
+      }
+    }
+    
+    this.render();
+  }
 
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
-    );
-    const bounds = this.getSelectionBounds(selectedShapes);
-    const handleSize = 8;
-    const halfHandle = handleSize / 2;
+  private findElementAtPoint(point: Point): ExcalidrawElement | null {
+    const elements = this.scene.getElements();
+    // Iterate in reverse to get the top-most element
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const element = elements[i];
+      if (this.isPointInElement(point, element)) {
+        return element;
+      }
+    }
+    return null;
+  }
 
-    const handles: ResizeHandle[] = [
-      { position: "topLeft", x: bounds.x, y: bounds.y },
-      { position: "topRight", x: bounds.x + bounds.width, y: bounds.y },
-      {
-        position: "bottomRight",
-        x: bounds.x + bounds.width,
-        y: bounds.y + bounds.height,
-      },
-      { position: "bottomLeft", x: bounds.x, y: bounds.y + bounds.height },
-    ];
-
+  private isPointInElement(point: Point, element: ExcalidrawElement): boolean {
     return (
-      handles.find(
-        (handle) =>
-          x >= handle.x - halfHandle &&
-          x <= handle.x + halfHandle &&
-          y >= handle.y - halfHandle &&
-          y <= handle.y + halfHandle
-      ) || null
+      point.x >= element.x &&
+      point.x <= element.x + (element.width || 0) &&
+      point.y >= element.y &&
+      point.y <= element.y + (element.height || 0)
     );
   }
 
-  private handleDoubleClick = (e: MouseEvent) => {
-    const x = e.pageX - this.canvas.offsetLeft;
-    const y = e.pageY - this.canvas.offsetTop;
+  public setElements(elements: ExcalidrawElement[]) {
+    // Clear the current scene
+    this.scene = new Scene();
 
-    const selectedIndex = this.findSelectedShape(x, y);
-    const selectedShape =
-      selectedIndex !== -1 ? this.existingShapes[selectedIndex] : null;
+    // Add the new elements to the scene
+    elements.forEach((element) => this.scene.addElement(element));
 
-    if (selectedShape && selectedShape.type === "text") {
-      const newText = prompt("Edit text:", selectedShape.text);
-      if (newText !== null) {
-        selectedShape.text = newText;
-        this.clearCanvas();
-        this.emitShapeUpdates();
-      }
-    }
-  };
+    // Re-render the canvas
+    this.render();
 
-  private resizeShape(
-    shape: Shape,
-    dx: number,
-    dy: number,
-    handle: ResizeHandle["position"],
-    maintainAspectRatio: boolean
-  ) {
-    const bounds = this.getShapeBounds(shape);
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-
-    const cos = Math.cos(-shape.rotation);
-    const sin = Math.sin(-shape.rotation);
-    const rotatedDx = cos * dx - sin * dy;
-    const rotatedDy = sin * dx + cos * dy;
-
-    let newWidth = bounds.width;
-    let newHeight = bounds.height;
-    let newX = bounds.x;
-    let newY = bounds.y;
-
-    switch (handle) {
-      case "topLeft":
-        newWidth -= rotatedDx;
-        newHeight -= rotatedDy;
-        newX += rotatedDx;
-        newY += rotatedDy;
-        break;
-      case "topRight":
-        newWidth += rotatedDx;
-        newHeight -= rotatedDy;
-        newY += rotatedDy;
-        break;
-      case "bottomRight":
-        newWidth += rotatedDx;
-        newHeight += rotatedDy;
-        break;
-      case "bottomLeft":
-        newWidth -= rotatedDx;
-        newHeight += rotatedDy;
-        newX += rotatedDx;
-        break;
-    }
-
-    if (maintainAspectRatio) {
-      const aspectRatio = bounds.width / bounds.height;
-      if (Math.abs(newWidth) / Math.abs(newHeight) > aspectRatio) {
-        newWidth = Math.sign(newWidth) * Math.abs(newHeight * aspectRatio);
-      } else {
-        newHeight = Math.sign(newHeight) * Math.abs(newWidth / aspectRatio);
-      }
-    }
-
-    this.applyResizedDimensions(shape, newX, newY, newWidth, newHeight);
-  }
-
-  private applyResizedDimensions(
-    shape: Shape,
-    newX: number,
-    newY: number,
-    newWidth: number,
-    newHeight: number
-  ) {
-    switch (shape.type) {
-      case "rect":
-        shape.x = newX;
-        shape.y = newY;
-        shape.width = Math.abs(newWidth);
-        shape.height = Math.abs(newHeight);
-        break;
-      case "circle": {
-        const radius = Math.max(Math.abs(newWidth), Math.abs(newHeight)) / 2;
-        shape.startX = newX;
-        shape.startY = newY;
-        shape.endX = newX + radius * 2;
-        shape.endY = newY + radius * 2;
-        break;
-      }
-      case "line":
-        const angle = Math.atan2(
-          shape.endY - shape.startY,
-          shape.endX - shape.startX
-        );
-        const length = Math.sqrt(newWidth * newWidth + newHeight * newHeight);
-        shape.startX = newX;
-        shape.startY = newY;
-        shape.endX = newX + length * Math.cos(angle);
-        shape.endY = newY + length * Math.sin(angle);
-        break;
-      case "pencil": {
-        const scaleX =
-          newWidth /
-          (shape.points[shape.points.length - 1].x - shape.points[0].x);
-        const scaleY =
-          newHeight /
-          (shape.points[shape.points.length - 1].y - shape.points[0].y);
-        const originX = shape.points[0].x;
-        const originY = shape.points[0].y;
-
-        shape.points = shape.points.map((point) => ({
-          x: originX + (point.x - originX) * scaleX,
-          y: originY + (point.y - originY) * scaleY,
-        }));
-        break;
-      }
-      case "text":
-        shape.x = newX;
-        shape.y = newY;
-        shape.fontSize = Math.abs(newHeight);
-        break;
+    // Notify listeners about the update
+    if (this.elementUpdateCallback) {
+      this.elementUpdateCallback(elements);
     }
   }
 
-  private rotatePoint(
-    point: { x: number; y: number },
-    center: { x: number; y: number },
-    angle: number
-  ) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return {
-      x: cos * (point.x - center.x) - sin * (point.y - center.y) + center.x,
-      y: sin * (point.x - center.x) + cos * (point.y - center.y) + center.y,
-    };
-  }
+  private handleMouseMove = (event: MouseEvent) => {
+    // Only show eraser cursor when eraser tool is selected
+    if (this.state.currentTool === "eraser") {
+      this.showEraserCursor(event.clientX, event.clientY);
+    }
 
-  mouseMoveHandler = (e: MouseEvent) => {
-    const x = e.pageX - this.canvas.offsetLeft;
-    const y = e.pageY - this.canvas.offsetTop;
+    if (!this.isDrawing) return; // Skip processing if not drawing
 
-    if (this.isPanning) {
-      const dx = x - this.panStartX;
-      const dy = y - this.panStartY;
-      this.camera.pan(dx, dy);
-      this.panStartX = x;
-      this.panStartY = y;
-      this.clearCanvas();
+    const point = this.camera.screenToWorld(event.clientX, event.clientY);
+
+    if (this.state.isPanning) {
+      this.camera.pan(event.movementX, event.movementY);
+      this.render();
       return;
     }
 
-    if (this.selectedTool === "selection") {
-      if (
-        this.selectionState.isRotating &&
-        this.selectionState.rotationCenter
-      ) {
-        this.handleRotation(x, y);
-        return;
-      }
-
-      if (this.selectionState.isResizing && this.selectionState.resizeHandle) {
-        const dx = x - this.selectionState.dragStartX;
-        const dy = y - this.selectionState.dragStartY;
-
-        this.existingShapes
-          .filter((shape) => this.selectionState.selectedShapeIds.has(shape.id))
-          .forEach((shape) => {
-            this.resizeShape(
-              shape,
-              dx,
-              dy,
-              this.selectionState.resizeHandle!.position,
-              e.shiftKey
-            );
-          });
-
-        this.selectionState.dragStartX = x;
-        this.selectionState.dragStartY = y;
-        this.clearCanvas();
-        return;
-      }
-
-      if (this.selectionState.isDragging) {
-        const dx = x - this.selectionState.dragStartX;
-        const dy = y - this.selectionState.dragStartY;
-
-        this.existingShapes.forEach((shape) => {
-          if (this.selectionState.selectedShapeIds.has(shape.id)) {
-            this.moveShape(shape, dx, dy);
-          }
-        });
-
-        this.selectionState.dragStartX = x;
-        this.selectionState.dragStartY = y;
-        this.clearCanvas();
-        return;
-      }
-
-      if (this.selectionState.selectionBox) {
-        this.selectionState.selectionBox.endX = x;
-        this.selectionState.selectionBox.endY = y;
-        this.clearCanvas();
-        return;
-      }
-    }
-
-    if (!this.clicked) return;
-
-    this.clearCanvas();
-
-    switch (this.selectedTool) {
-      case "rect": {
-        const width = x - this.startX;
-        const height = y - this.startY;
-        this.ctx.strokeRect(this.startX, this.startY, width, height);
-        if (this.currentFillColor !== "transparent") {
-          this.ctx.fillRect(this.startX, this.startY, width, height);
+    if (this.state.draggingElement) {
+      if (this.state.currentTool === "eraser") {
+        this.updateEraserPath(point);
+      } else if (this.state.draggingElement.type === "pencil") {
+        // Throttle points for pencil tool
+        const lastPoint = this.state.draggingElement.points?.at(-1);
+        if (lastPoint && this.getDistance(lastPoint, point) > 2) {
+          this.state.draggingElement.points?.push(point);
+          // Don't call render here - it'll be handled by the render loop
         }
-        break;
+      } else {
+        this.state.draggingElement.width =
+          point.x - this.state.draggingElement.x;
+        this.state.draggingElement.height =
+          point.y - this.state.draggingElement.y;
       }
-      case "circle": {
-        const centerX = (this.startX + x) / 2;
-        const centerY = (this.startY + y) / 2;
-        const radiusX = Math.abs(x - this.startX) / 2;
-        const radiusY = Math.abs(y - this.startY) / 2;
-        const radius = Math.max(radiusX, radiusY);
-        this.ctx.beginPath();
-        this.ctx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
-        this.ctx.stroke();
-        if (this.currentFillColor !== "transparent") {
-          this.ctx.fill();
-        }
-        break;
-      }
-      case "line": {
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.startX, this.startY);
-        this.ctx.lineTo(x, y);
-        this.ctx.stroke();
-        break;
-      }
-      case "pencil": {
-        this.currentPencilPoints.push({ x, y });
-        if (this.currentPencilPoints.length > 1) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(
-            this.currentPencilPoints[0].x,
-            this.currentPencilPoints[0].y
-          );
-          this.currentPencilPoints.slice(1).forEach((point) => {
-            this.ctx.lineTo(point.x, point.y);
-          });
-          this.ctx.stroke();
-        }
-        break;
-      }
-      case "text": {
-        this.ctx.font = `${this.currentBold ? "bold" : ""} ${this.currentItalic ? "italic" : ""} ${this.currentFontSize}px ${this.currentFontFamily}`;
-        this.ctx.fillStyle = this.currentStrokeColor;
-        this.ctx.fillText(this.currentText, x, y);
-        break;
-      }
+      this.scene.updateElement(this.state.draggingElement);
     }
   };
 
-  private moveShape(shape: Shape, dx: number, dy: number) {
-    let adjustedDx = dx;
-    let adjustedDy = dy;
+  private updateEraserPath(point: Point) {
+    if (!this.eraserElement?.points) return;
+  
+    const lastPoint = this.eraserPath[this.eraserPath.length - 1];
+    if (!lastPoint) return;
+  
+    this.eraserPath.push(point);
+    this.eraserElement.points.push(point);
+  
+    const elements = this.scene.getElements();
+    for (const element of elements) {
+      if (element.isDeleted || element === this.eraserElement) continue;
+  
+      if (element.type === "pencil" && element.points) {
+        this.handlePencilErase(element, point);
+      } else if (this.isPointNearElement(point, element)) {
+        element.isDeleted = true;
+        this.scene.updateElement(element);
+      }
+    }
+  }
 
-    if (shape.rotation !== 0) {
-      const cos = Math.cos(shape.rotation);
-      const sin = Math.sin(shape.rotation);
-      adjustedDx = cos * dx + sin * dy;
-      adjustedDy = -sin * dx + cos * dy;
+  private handlePencilErase(element: ExcalidrawElement, eraserPoint: Point) {
+    if (!element.points) return;
+
+    // Create new segments that don't intersect with the eraser
+    let newSegments: Point[][] = [];
+    let currentSegment: Point[] = [];
+
+    for (const point of element.points) {
+      const distance = Math.hypot(
+        point.x - eraserPoint.x,
+        point.y - eraserPoint.y
+      );
+
+      if (distance > this.ERASER_SIZE / 2) {
+        currentSegment.push(point);
+      } else {
+        if (currentSegment.length > 1) {
+          newSegments.push([...currentSegment]);
+        }
+        currentSegment = [];
+      }
     }
 
-    switch (shape.type) {
+    if (currentSegment.length > 1) {
+      newSegments.push(currentSegment);
+    }
+
+    // Create new elements for each segment
+    if (newSegments.length > 0) {
+      element.isDeleted = true;
+      this.scene.updateElement(element);
+
+      for (const segment of newSegments) {
+        const newElement: ExcalidrawElement = {
+          ...element,
+          id: crypto.randomUUID(),
+          points: segment,
+          isDeleted: false,
+        };
+        this.scene.addElement(newElement);
+      }
+    } else if (newSegments.length === 0) {
+      // If no segments remain, delete the entire element
+      element.isDeleted = true;
+      this.scene.updateElement(element);
+    }
+  }
+
+  private isPointNearElement(
+    point: Point,
+    element: ExcalidrawElement
+  ): boolean {
+    const tolerance = this.ERASER_SIZE / 2;
+
+    switch (element.type) {
       case "rect":
-        shape.x += adjustedDx;
-        shape.y += adjustedDy;
-        break;
+        return this.isPointNearRectangle(point, element, tolerance);
       case "circle":
-        shape.startX += adjustedDx;
-        shape.startY += adjustedDy;
-        shape.endX += adjustedDx;
-        shape.endY += adjustedDy;
-        break;
+        return this.isPointNearEllipse(point, element, tolerance);
       case "line":
-        shape.startX += adjustedDx;
-        shape.startY += adjustedDy;
-        shape.endX += adjustedDx;
-        shape.endY += adjustedDy;
-        break;
-      case "pencil":
-        shape.points = shape.points.map((point) => ({
-          x: point.x + adjustedDx,
-          y: point.y + adjustedDy,
-        }));
-        break;
+      case "arrow":
+        return this.isPointNearLine(point, element, tolerance);
       case "text":
-        shape.x += adjustedDx;
-        shape.y += adjustedDy;
-        break;
-    }
-  }
-
-  private handleRotation(x: number, y: number) {
-    if (!this.selectionState.rotationCenter) return;
-
-    const { x: centerX, y: centerY } = this.selectionState.rotationCenter;
-    const angle = Math.atan2(y - centerY, x - centerX);
-    const deltaAngle = angle - this.selectionState.rotationAngle;
-
-    this.existingShapes
-      .filter((shape) => this.selectionState.selectedShapeIds.has(shape.id))
-      .forEach((shape) => {
-        const initialShape = this.selectionState.initialShapes[shape.id];
-        if (initialShape) {
-          shape.rotation = (initialShape.rotation + deltaAngle) % (Math.PI * 2);
-        }
-      });
-
-    this.selectionState.rotationAngle = angle;
-    this.clearCanvas();
-
-    if (this.selectionState.selectedShapeIds.size > 0) {
-      this.drawSelectionOverlay();
-    }
-  }
-
-  private findSelectedShape(x: number, y: number): number {
-    for (let i = this.existingShapes.length - 1; i >= 0; i--) {
-      const shape = this.existingShapes[i];
-      if (this.isPointInRotatedShape(shape, x, y)) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  private isPointInRotatedShape(shape: Shape, x: number, y: number): boolean {
-    const bounds = this.getShapeBounds(shape);
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-
-    let testPoint = { x, y };
-    if (shape.rotation !== 0) {
-      const cos = Math.cos(-shape.rotation);
-      const sin = Math.sin(-shape.rotation);
-      testPoint = {
-        x: cos * (x - centerX) - sin * (y - centerY) + centerX,
-        y: sin * (x - centerX) + cos * (y - centerY) + centerY,
-      };
-    }
-
-    switch (shape.type) {
-      case "rect": {
-        const padding = 2;
-        return (
-          testPoint.x >= shape.x - padding &&
-          testPoint.x <= shape.x + shape.width + padding &&
-          testPoint.y >= shape.y - padding &&
-          testPoint.y <= shape.y + shape.height + padding
-        );
-      }
-      case "circle": {
-        const radius =
-          Math.max(
-            Math.abs(shape.endX - shape.startX),
-            Math.abs(shape.endY - shape.startY)
-          ) / 2;
-        const shapeCenterX = (shape.startX + shape.endX) / 2;
-        const shapeCenterY = (shape.startY + shape.endY) / 2;
-        const dx = testPoint.x - shapeCenterX;
-        const dy = testPoint.y - shapeCenterY;
-        const padding = 2;
-        return Math.sqrt(dx * dx + dy * dy) <= radius + padding;
-      }
-      case "line": {
-        const padding = 3;
-        return (
-          this.pointToLineDistance(
-            testPoint.x,
-            testPoint.y,
-            shape.startX,
-            shape.startY,
-            shape.endX,
-            shape.endY
-          ) <= padding
-        );
-      }
-      case "pencil": {
-        const padding = 3;
-        for (let i = 1; i < shape.points.length; i++) {
-          const point1 = this.rotatePoint(
-            shape.points[i - 1],
-            { x: centerX, y: centerY },
-            shape.rotation
-          );
-          const point2 = this.rotatePoint(
-            shape.points[i],
-            { x: centerX, y: centerY },
-            shape.rotation
-          );
-          const dist = this.pointToLineDistance(
-            testPoint.x,
-            testPoint.y,
-            point1.x,
-            point1.y,
-            point2.x,
-            point2.y
-          );
-          if (dist <= padding) return true;
-        }
+        return this.isPointInRectangle(point, element);
+      default:
         return false;
-      }
-      case "text": {
-        const padding = 10;
-        return (
-          testPoint.x >= shape.x - padding &&
-          testPoint.x <=
-            shape.x + this.ctx.measureText(shape.text).width + padding &&
-          testPoint.y >= shape.y - shape.fontSize - padding &&
-          testPoint.y <= shape.y + padding
-        );
-      }
     }
+  }
+
+  private isPointNearRectangle(
+    point: Point,
+    element: ExcalidrawElement,
+    tolerance: number
+  ): boolean {
+    const { x, y, width = 0, height = 0 } = element;
+
+    // Check if point is near the rectangle edges
+    return (
+      point.x >= x - tolerance &&
+      point.x <= x + width + tolerance &&
+      point.y >= y - tolerance &&
+      point.y <= y + height + tolerance &&
+      (point.x <= x + tolerance ||
+        point.x >= x + width - tolerance ||
+        point.y <= y + tolerance ||
+        point.y >= y + height - tolerance)
+    );
+  }
+
+  private isPointNearEllipse(
+    point: Point,
+    element: ExcalidrawElement,
+    tolerance: number
+  ): boolean {
+    const { x, y, width = 0, height = 0 } = element;
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const radiusX = width / 2;
+    const radiusY = height / 2;
+
+    const normalizedX = (point.x - centerX) / (radiusX + tolerance);
+    const normalizedY = (point.y - centerY) / (radiusY + tolerance);
+    const distance = normalizedX * normalizedX + normalizedY * normalizedY;
+
+    return distance <= 1;
+  }
+
+  private isPointNearLine(
+    point: Point,
+    element: ExcalidrawElement,
+    tolerance: number
+  ): boolean {
+    const start = { x: element.x, y: element.y };
+    const end = {
+      x: element.x + (element.width || 0),
+      y: element.y + (element.height || 0),
+    };
+
+    const distance = this.pointToLineDistance(point, start, end);
+    return distance <= tolerance;
+  }
+
+  private isPointInRectangle(
+    point: Point,
+    element: ExcalidrawElement
+  ): boolean {
+    return (
+      point.x >= element.x &&
+      point.x <= element.x + (element.width || 0) &&
+      point.y >= element.y &&
+      point.y <= element.y + (element.height || 0)
+    );
   }
 
   private pointToLineDistance(
-    x: number,
-    y: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
+    point: Point,
+    lineStart: Point,
+    lineEnd: Point
   ): number {
-    const A = x - x1;
-    const B = y - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
-
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    let param = -1;
-
-    if (lenSq !== 0) {
-      param = dot / lenSq;
-    }
-
-    let xx, yy;
-
-    if (param < 0) {
-      xx = x1;
-      yy = y1;
-    } else if (param > 1) {
-      xx = x2;
-      yy = y2;
-    } else {
-      xx = x1 + param * C;
-      yy = y1 + param * D;
-    }
-
-    const dx = x - xx;
-    const dy = y - yy;
-
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  mouseUpHandler = (e: MouseEvent) => {
-    const x = e.pageX - this.canvas.offsetLeft;
-    const y = e.pageY - this.canvas.offsetTop;
-
-    if (this.isPanning) {
-      this.isPanning = false;
-      return;
-    }
-
-    if (this.selectedTool === "selection") {
-      if (this.selectionState.isResizing) {
-        this.selectionState.isResizing = false;
-        this.selectionState.resizeHandle = null;
-        this.emitShapeUpdates();
-        this.selectionState.initialShapes = {};
-        return;
-      }
-
-      if (this.selectionState.isDragging) {
-        this.selectionState.isDragging = false;
-        this.emitShapeUpdates();
-        this.selectionState.initialShapes = {};
-        return;
-      }
-
-      if (this.selectionState.isRotating) {
-        this.selectionState.isRotating = false;
-        this.selectionState.rotationCenter = null;
-        this.emitShapeUpdates();
-        this.selectionState.initialShapes = {};
-        return;
-      }
-
-      if (this.selectionState.selectionBox) {
-        const { startX, startY, endX, endY } = this.selectionState.selectionBox;
-        const left = Math.min(startX, endX);
-        const right = Math.max(startX, endX);
-        const top = Math.min(startY, endY);
-        const bottom = Math.max(startY, endY);
-
-        this.existingShapes.forEach((shape) => {
-          const bounds = this.getShapeBounds(shape);
-          if (
-            bounds.x >= left &&
-            bounds.x + bounds.width <= right &&
-            bounds.y >= top &&
-            bounds.y + bounds.height <= bottom
-          ) {
-            this.selectionState.selectedShapeIds.add(shape.id);
-          }
-        });
-
-        this.selectionState.selectionBox = null;
-        this.clearCanvas();
-      }
-      return;
-    }
-
-    if (!this.clicked) return;
-    this.clicked = false;
-
-    const newShape: Shape = this.createShape(x, y);
-    if (newShape) {
-      this.existingShapes.push(newShape);
-      this.emitShapeUpdates();
-    }
-
-    this.currentPencilPoints = [];
-  };
-
-  private emitShapeUpdates() {
-    this.selectionState.selectedShapeIds.forEach((id) => {
-      const shape = this.existingShapes.find((s) => s.id === id);
-      if (shape) {
-        this.socket.send(
-          JSON.stringify({
-            type: "chat",
-            message: JSON.stringify({ shape }),
-            roomId: this.roomId,
-          })
-        );
-      }
-    });
-  }
-
-  private createShape(x: number, y: number): Shape {
-    const baseShape = {
-      id: crypto.randomUUID(),
-      rotation: 0,
-      selected: false,
-      strokeColor: this.currentStrokeColor || "#ffffff",
-      fillColor: this.currentFillColor || "transparent",
-      strokeWidth: this.lineThickness,
-      opacity: 1,
-      locked: false,
-      strokeStyle: this.currentStrokeStyle,
-      edges: this.currentEdges,
-      sloppiness: this.currentSloppiness,
-    };
-
-    switch (this.selectedTool) {
-      case "rect": {
-        const width = x - this.startX;
-        const height = y - this.startY;
-        const normalizedX = width < 0 ? x : this.startX;
-        const normalizedY = height < 0 ? y : this.startY;
-        return {
-          ...baseShape,
-          type: "rect",
-          x: normalizedX,
-          y: normalizedY,
-          width: Math.abs(width),
-          height: Math.abs(height),
-          cornerRadius: this.currentEdges === "rounded" ? 10 : 0,
-        };
-      }
-
-      case "circle": {
-        const centerX = (this.startX + x) / 2;
-        const centerY = (this.startY + y) / 2;
-        const radiusX = Math.abs(x - this.startX) / 2;
-        const radiusY = Math.abs(y - this.startY) / 2;
-        const radius = Math.max(radiusX, radiusY);
-
-        return {
-          ...baseShape,
-          type: "circle",
-          startX: centerX - radius,
-          startY: centerY - radius,
-          endX: centerX + radius,
-          endY: centerY + radius,
-        };
-      }
-
-      case "line": {
-        let endX = x;
-        let endY = y;
-
-        if (this.isShiftPressed) {
-          const dx = Math.abs(x - this.startX);
-          const dy = Math.abs(y - this.startY);
-
-          if (dx > dy) {
-            endY = this.startY;
-          } else {
-            endX = this.startX;
-          }
-        }
-
-        return {
-          ...baseShape,
-          type: "line",
-          startX: this.startX,
-          startY: this.startY,
-          endX,
-          endY,
-          arrowStart: false,
-          arrowEnd: this.currentArrowEnd || false,
-        };
-      }
-
-      case "pencil": {
-        if (this.currentPencilPoints.length < 2) {
-          this.currentPencilPoints.push({ x: this.startX, y: this.startY });
-        }
-
-        let points = [...this.currentPencilPoints];
-        if (this.smoothingEnabled && points.length > 2) {
-          points = this.smoothPoints(points);
-        }
-
-        return {
-          ...baseShape,
-          type: "pencil",
-          points,
-          smoothing: this.currentSloppiness || 0.5,
-        };
-      }
-
-      case "text": {
-        const newText = prompt("Enter text:", this.currentText || "Text");
-        if (newText === null)
-          return {
-            ...baseShape,
-            type: "text",
-            x,
-            y,
-            text: this.currentText || "Text",
-            fontSize: this.currentFontSize || 20,
-            fontFamily: this.currentFontFamily || "Arial",
-            textAlign: this.currentTextAlign || "left",
-            bold: this.currentBold || false,
-            italic: this.currentItalic || false,
-          };
-
-        let finalX = this.startX;
-        let finalY = this.startY;
-
-        if (this.snapToGrid) {
-          const snapped = this.snapToGridPoint(finalX, finalY);
-          finalX = snapped.x;
-          finalY = snapped.y;
-        }
-
-        return {
-          ...baseShape,
-          type: "text",
-          x,
-          y,
-          text: newText,
-          fontSize: this.currentFontSize || 20,
-          fontFamily: this.currentFontFamily || "Arial",
-          textAlign: this.currentTextAlign || "left",
-          bold: this.currentBold || false,
-          italic: this.currentItalic || false,
-        };
-      }
-
-      default:
-        throw new Error(`Invalid tool selected: ${this.selectedTool}`);
-    }
-  }
-
-  private smoothPoints(
-    points: { x: number; y: number }[]
-  ): { x: number; y: number }[] {
-    const smoothedPoints: { x: number; y: number }[] = [];
-    const smoothingFactor = this.smoothingLevel || 0.5;
-
-    smoothedPoints.push(points[0]);
-
-    for (let i = 1; i < points.length - 1; i++) {
-      const prev = points[i - 1];
-      const current = points[i];
-      const next = points[i + 1];
-
-      const smoothedX =
-        current.x * (1 - smoothingFactor) +
-        ((prev.x + next.x) / 2) * smoothingFactor;
-      const smoothedY =
-        current.y * (1 - smoothingFactor) +
-        ((prev.y + next.y) / 2) * smoothingFactor;
-
-      smoothedPoints.push({ x: smoothedX, y: smoothedY });
-    }
-
-    smoothedPoints.push(points[points.length - 1]);
-
-    return smoothedPoints;
-  }
-
-  public updateTextProperties(properties: {
-    text?: string;
-    fontSize?: number;
-    fontFamily?: string;
-    textAlign?: CanvasTextAlign;
-    bold?: boolean;
-    italic?: boolean;
-  }) {
-    if (properties.text !== undefined) this.currentText = properties.text;
-    if (properties.fontSize !== undefined)
-      this.currentFontSize = properties.fontSize;
-    if (properties.fontFamily !== undefined)
-      this.currentFontFamily = properties.fontFamily;
-    if (properties.textAlign !== undefined)
-      this.currentTextAlign = properties.textAlign;
-    if (properties.bold !== undefined) this.currentBold = properties.bold;
-    if (properties.italic !== undefined) this.currentItalic = properties.italic;
-
-    if (this.selectionState.selectedShapeIds.size > 0) {
-      this.existingShapes = this.existingShapes.map((shape) => {
-        if (
-          this.selectionState.selectedShapeIds.has(shape.id) &&
-          shape.type === "text"
-        ) {
-          return { ...shape, ...properties };
-        }
-        return shape;
-      });
-      this.clearCanvas();
-      this.emitShapeUpdates();
-    }
-  }
-
-  public updateShapeStyle(properties: {
-    strokeColor?: string;
-    fillColor?: string;
-    strokeWidth?: number;
-    arrowEnd?: boolean;
-    smoothingLevel?: number;
-  }) {
-    if (properties.strokeColor !== undefined)
-      this.currentStrokeColor = properties.strokeColor;
-    if (properties.fillColor !== undefined)
-      this.currentFillColor = properties.fillColor;
-    if (properties.strokeWidth !== undefined)
-      this.lineThickness = properties.strokeWidth;
-    if (properties.arrowEnd !== undefined)
-      this.currentArrowEnd = properties.arrowEnd;
-    if (properties.smoothingLevel !== undefined)
-      this.smoothingLevel = properties.smoothingLevel;
-
-    if (this.selectionState.selectedShapeIds.size > 0) {
-      this.existingShapes = this.existingShapes.map((shape) => {
-        if (this.selectionState.selectedShapeIds.has(shape.id)) {
-          return { ...shape, ...properties };
-        }
-        return shape;
-      });
-      this.clearCanvas();
-      this.emitShapeUpdates();
-    }
-  }
-
-  private getShapeBounds(shape: Shape): {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } {
-    switch (shape.type) {
-      case "rect":
-        return {
-          x: shape.x,
-          y: shape.y,
-          width: shape.width,
-          height: shape.height,
-        };
-      case "circle": {
-        const left = Math.min(shape.startX, shape.endX);
-        const top = Math.min(shape.startY, shape.endY);
-        const width = Math.abs(shape.endX - shape.startX);
-        const height = Math.abs(shape.endY - shape.startY);
-        const maxRadius = Math.max(width, height) / 2;
-        return {
-          x: (shape.startX + shape.endX) / 2 - maxRadius,
-          y: (shape.startY + shape.endY) / 2 - maxRadius,
-          width: maxRadius * 2,
-          height: maxRadius * 2,
-        };
-      }
-      case "line": {
-        const minX = Math.min(shape.startX, shape.endX);
-        const minY = Math.min(shape.startY, shape.endY);
-        return {
-          x: minX,
-          y: minY,
-          width: Math.abs(shape.endX - shape.startX),
-          height: Math.abs(shape.endY - shape.startY),
-        };
-      }
-      case "pencil": {
-        const xs = shape.points.map((p) => p.x);
-        const ys = shape.points.map((p) => p.y);
-        return {
-          x: Math.min(...xs),
-          y: Math.min(...ys),
-          width: Math.max(...xs) - Math.min(...xs),
-          height: Math.max(...ys) - Math.min(...ys),
-        };
-      }
-      case "text": {
-        const textWidth = this.ctx.measureText(shape.text).width;
-        return {
-          x: shape.x,
-          y: shape.y - shape.fontSize,
-          width: textWidth,
-          height: shape.fontSize,
-        };
-      }
-    }
-  }
-
-  private startRotation(x: number, y: number) {
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
+    const numerator = Math.abs(
+      (lineEnd.y - lineStart.y) * point.x -
+        (lineEnd.x - lineStart.x) * point.y +
+        lineEnd.x * lineStart.y -
+        lineEnd.y * lineStart.x
     );
-    const bounds = this.getSelectionBounds(selectedShapes);
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-
-    this.selectionState.isRotating = true;
-    this.selectionState.rotationCenter = { x: centerX, y: centerY };
-    this.selectionState.rotationAngle = Math.atan2(y - centerY, x - centerX);
-
-    this.selectionState.selectedShapeIds.forEach((id) => {
-      const shape = this.existingShapes.find((s) => s.id === id);
-      if (shape) {
-        this.selectionState.initialShapes[id] = { ...shape };
-      }
-    });
-
-    this.clearCanvas();
-    this.drawSelectionOverlay();
-  }
-
-  private drawSelectionOverlay() {
-    const selectedShapes = this.existingShapes.filter((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
+    const denominator = Math.sqrt(
+      Math.pow(lineEnd.y - lineStart.y, 2) +
+        Math.pow(lineEnd.x - lineStart.x, 2)
     );
-    if (selectedShapes.length === 0) return;
-
-    const bounds = this.getSelectionBounds(selectedShapes);
-
-    this.ctx.save();
-    this.ctx.strokeStyle = "#0096fd";
-    this.ctx.lineWidth = 1;
-    this.ctx.setLineDash([5, 5]);
-
-    const rotations = new Set(selectedShapes.map((s) => s.rotation));
-    if (rotations.size === 1) {
-      const rotation = selectedShapes[0].rotation;
-      const center = {
-        x: bounds.x + bounds.width / 2,
-        y: bounds.y + bounds.height / 2,
-      };
-
-      this.ctx.translate(center.x, center.y);
-      this.ctx.rotate(rotation);
-      this.ctx.translate(-center.x, -center.y);
-    }
-
-    this.ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-
-    const handleSize = 8;
-    const halfHandle = handleSize / 2;
-    this.ctx.setLineDash([]);
-    this.ctx.fillStyle = "#ffffff";
-    this.ctx.strokeStyle = "#0096fd";
-
-    const cornerPoints = [
-      { x: bounds.x, y: bounds.y }, // Top-left
-      { x: bounds.x + bounds.width, y: bounds.y }, // Top-right
-      { x: bounds.x + bounds.width, y: bounds.y + bounds.height }, // Bottom-right
-      { x: bounds.x, y: bounds.y + bounds.height }, // Bottom-left
-    ];
-
-    cornerPoints.forEach((point) => {
-      this.ctx.fillRect(
-        point.x - halfHandle,
-        point.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-      this.ctx.strokeRect(
-        point.x - halfHandle,
-        point.y - halfHandle,
-        handleSize,
-        handleSize
-      );
-    });
-
-    const centerX = bounds.x + bounds.width / 2;
-    const centerY = bounds.y + bounds.height / 2;
-    const rotationHandleY = centerY - ROTATION_HANDLE_DISTANCE;
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(centerX, centerY);
-    this.ctx.lineTo(centerX, rotationHandleY);
-    this.ctx.stroke();
-
-    this.ctx.beginPath();
-    this.ctx.arc(centerX, rotationHandleY, 5, 0, Math.PI * 2);
-    this.ctx.fillStyle = "#ffffff";
-    this.ctx.fill();
-    this.ctx.strokeStyle = "#0096fd";
-    this.ctx.stroke();
-
-    this.ctx.restore();
+    return numerator / denominator;
   }
 
-  public undo() {
-    if (this.undoStack.length > 0) {
-      const currentState = [...this.existingShapes];
-      const previousState = this.undoStack.pop()!;
-      this.redoStack.push(currentState);
-      this.existingShapes = previousState;
-      this.clearCanvas();
-    }
-  }
-
-  public redo() {
-    if (this.redoStack.length > 0) {
-      const currentState = [...this.existingShapes];
-      const nextState = this.redoStack.pop()!;
-      this.undoStack.push(currentState);
-      this.existingShapes = nextState;
-      this.clearCanvas();
-    }
-  }
-
-  public exportAsJSON(): string {
-    return JSON.stringify(this.existingShapes);
-  }
-
-  public importFromJSON(json: string) {
-    this.existingShapes = JSON.parse(json);
-    this.clearCanvas();
-  }
-
-  public exportAsImage(): Promise<string> {
-    return new Promise((resolve) => {
-      this.canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          resolve(url);
+  private handleMouseUp = () => {
+    this.isDrawing = false;
+    this.state.isPanning = false;
+    
+    if (this.state.draggingElement) {
+        if (this.state.currentTool === "eraser") {
+            // Remove the visual eraser path
+            if (this.eraserElement) {
+                this.eraserElement.isDeleted = true;
+                this.scene.updateElement(this.eraserElement);
+            }
+            this.eraserPath = [];
+            this.eraserElement = null;
+        } else {
+            if (
+                this.state.draggingElement.type === "rect" ||
+                this.state.draggingElement.type === "circle"
+            ) {
+                this.normalizeElementDimensions(this.state.draggingElement);
+            }
+            this.scene.updateElement(this.state.draggingElement);
         }
-      });
+        this.state.draggingElement = null;
+    }
+    
+    this.render();
+};
+
+  private getDistance(p1: Point, p2: Point): number {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+  }
+
+  private normalizeElementDimensions(element: ExcalidrawElement) {
+    if (element.width < 0) {
+      element.x += element.width;
+      element.width = Math.abs(element.width);
+    }
+    if (element.height < 0) {
+      element.y += element.height;
+      element.height = Math.abs(element.height);
+    }
+  }
+
+  public setTool(tool: AppState["currentTool"]) {
+    this.toolManager.setTool(tool);
+    this.state.currentTool = tool;
+  }
+
+  public setSelectedElements(elements: ExcalidrawElement[]) {
+    this.state.selectedElements = elements;
+    // Don't trigger the callback here as it should be handled by the caller
+  }
+
+  // Property setters for selected elements
+  public setStrokeColor(color: string) {
+    this.updateSelectedElements({ strokeColor: color });
+  }
+
+  public setFillColor(color: string) {
+    this.updateSelectedElements({ backgroundColor: color });
+  }
+
+  public setStrokeWidth(width: number) {
+    this.updateSelectedElements({ strokeWidth: width });
+  }
+
+  public setOpacity(opacity: number) {
+    this.updateSelectedElements({ opacity });
+  }
+
+  public setFontSize(size: number) {
+    this.updateSelectedElements({ fontSize: size });
+  }
+
+  public setStrokeStyle(style: "solid" | "dashed" | "dotted") {
+    this.updateSelectedElements({ strokeStyle: style });
+  }
+
+  public setFontFamily(family: string) {
+    this.updateSelectedElements({ fontFamily: family });
+  }
+
+  public setTextAlign(align: "left" | "center" | "right") {
+    this.updateSelectedElements({ textAlign: align });
+  }
+
+  private updateSelectedElements(props: Partial<ExcalidrawElement>) {
+    this.state.selectedElements.forEach((element) => {
+      const updatedElement = { ...element, ...props };
+      this.scene.updateElement(updatedElement);
     });
+    this.render();
   }
 
-  public zoomIn() {
-    this.scale *= 1.1;
-    this.clearCanvas();
+  public onSelectionChange(
+    callback: (element: ExcalidrawElement | null) => void
+  ) {
+    this.selectionCallback = callback;
   }
 
-  public zoomOut() {
-    this.scale /= 1.1;
-    this.clearCanvas();
-  }
-
-  public pan(dx: number, dy: number) {
-    this.offsetX += dx;
-    this.offsetY += dy;
-    this.clearCanvas();
-  }
-
-  private snapToGridPoint(x: number, y: number): { x: number; y: number } {
-    if (!this.snapToGrid) return { x, y };
-    return {
-      x: Math.round(x / this.gridSize) * this.gridSize,
-      y: Math.round(y / this.gridSize) * this.gridSize,
-    };
-  }
-
-  setTextAlign(align: CanvasTextAlign) {
-    this.currentTextAlign = align;
-  }
-
-  setFontFamily(family: string) {
-    this.currentFontFamily = family;
-  }
-  setFontSize(size: number) {
-    this.currentFontSize = size;
-  }
-
-  public getSelectedElement(): { type: string; properties: any } | null {
-    if (this.selectionState.selectedShapeIds.size === 0) return null;
-
-    const selectedShape = this.existingShapes.find((shape) =>
-      this.selectionState.selectedShapeIds.has(shape.id)
-    );
-
-    if (!selectedShape) return null;
-
-    return {
-      type: selectedShape.type,
-      properties: {
-        strokeColor: selectedShape.strokeColor,
-        fillColor: selectedShape.fillColor,
-        strokeWidth: selectedShape.strokeWidth,
-        opacity: selectedShape.opacity,
-        strokeStyle: selectedShape.strokeStyle,
-        sloppiness: selectedShape.sloppiness,
-        edges: selectedShape.edges,
-        fontSize:
-          selectedShape.type === "text" ? selectedShape.fontSize : undefined,
-        fontFamily:
-          selectedShape.type === "text" ? selectedShape.fontFamily : undefined,
-        textAlign:
-          selectedShape.type === "text" ? selectedShape.textAlign : undefined,
-      },
-    };
-  }
-
-  private drawGrid() {
-    const viewport = this.camera.getViewport();
-    const gridSize = 20;
-
-    const startX =
-      Math.floor(-viewport.offset.x / viewport.zoom / gridSize) * gridSize;
-    const startY =
-      Math.floor(-viewport.offset.y / viewport.zoom / gridSize) * gridSize;
-    const endX =
-      Math.ceil(
-        (this.canvas.width - viewport.offset.x) / viewport.zoom / gridSize
-      ) * gridSize;
-    const endY =
-      Math.ceil(
-        (this.canvas.height - viewport.offset.y) / viewport.zoom / gridSize
-      ) * gridSize;
-
-    this.ctx.strokeStyle = "rgba(128, 128, 128, 0.2)";
-    this.ctx.lineWidth = 1 / viewport.zoom;
-
-    for (let x = startX; x <= endX; x += gridSize) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, startY);
-      this.ctx.lineTo(x, endY);
-      this.ctx.stroke();
-    }
-
-    for (let y = startY; y <= endY; y += gridSize) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(startX, y);
-      this.ctx.lineTo(endX, y);
-      this.ctx.stroke();
-    }
+  public onElementUpdate(callback: (elements: ExcalidrawElement[]) => void) {
+    this.elementUpdateCallback = callback;
   }
 
   render() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.camera.applyTransform(this.ctx);
-    this.drawGrid();
-    this.camera.restoreTransform(this.ctx);
+    this.renderer.render(this.scene.getElements());
+  }
+
+  destroy() {
+    this.shouldRender = false;
+    this.canvas.removeEventListener("mousedown", this.handleMouseDown);
+    this.canvas.removeEventListener("mousemove", this.handleMouseMove);
+    this.canvas.removeEventListener("mouseup", this.handleMouseUp);
+    this.canvas.removeEventListener("mouseleave", this.handleMouseLeave);
+    if (this.eraserCursor) {
+      document.body.removeChild(this.eraserCursor);
+      this.eraserCursor = null;
+    }
+    this.camera.cleanup();
   }
 }

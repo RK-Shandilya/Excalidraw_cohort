@@ -1,4 +1,4 @@
-import { ExcalidrawElement } from "./types";
+import { ExcalidrawElement } from "./types/types";
 import { Camera } from "./Camera";
 import { ShapeRenderer } from "./Render/ShapeRenderer";
 import { FreeDrawRenderer } from "./Render/FreedrawRenderer";

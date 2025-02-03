@@ -1,4 +1,4 @@
-import { ExcalidrawElement } from "../types";
+import { ExcalidrawElement } from "../types/types";
 
 export class TextRenderer {
   constructor(private ctx: CanvasRenderingContext2D) {}

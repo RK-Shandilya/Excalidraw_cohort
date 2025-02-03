@@ -1,4 +1,4 @@
-import { ExcalidrawElement } from "./types";
+import { ExcalidrawElement } from "./types/types";
 
 export class Scene {
   private elements: Map<string, ExcalidrawElement> = new Map();

@@ -15,6 +15,7 @@
     "next": "15.1.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "roughjs": "^4.6.6",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {

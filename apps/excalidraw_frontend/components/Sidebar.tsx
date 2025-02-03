@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, memo } from 'react';
-import { ExcalidrawElement, Tool } from '@/draw/types';
+import { ExcalidrawElement, Tool } from '@/draw/types/types';
 import { ColorButton, PropertyButton, PropertySection } from './SidebarComponents';
 
 export interface SidebarProps {

@@ -1,4 +1,4 @@
-import { Point, Viewport } from "./types";
+import { Point, Viewport } from "./types/types";
 
 export class Camera {
   private viewport: Viewport;

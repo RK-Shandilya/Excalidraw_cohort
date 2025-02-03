@@ -1,9 +1,9 @@
 import { Camera } from "./Camera";
 import { Renderer } from "./Renderer";
 import { Scene } from "./Scene";
-import { AppState, ExcalidrawElement, Point } from "./types";
-import { UndoRedoManager } from "./UndoRedoManager";
-import { ToolManager } from "./ToolManager";
+import { AppState, ExcalidrawElement, Point } from "./types/types";
+import { UndoRedoManager } from "./managers/UndoRedoManager";
+import { ToolManager } from "./managers/ToolManager";
 
 export class Game {
   private camera: Camera;
@@ -443,6 +443,8 @@ export class Game {
     this.render();
   }
 
+  // for checking point in inside or on the element
+  
   private findElementAtPoint(point: Point): ExcalidrawElement | null {
     const elements = this.scene.getElements();
     // Iterate in reverse to get the top-most element

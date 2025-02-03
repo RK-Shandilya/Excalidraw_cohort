@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExcalidrawElement } from '../types';
+import { ExcalidrawElement } from '@/draw/types/types';
 
 interface SelectionBoxProps {
   element: ExcalidrawElement;
@@ -125,9 +125,8 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
           top: '-4px',
           width: `${HANDLE_SIZE}px`,
           height: `${HANDLE_SIZE}px`,
-          backgroundColor: 'white',
+          backgroundColor: '#007BFF',
           border: '1.5px solid #007BFF',
-          borderRadius: '2px',
           cursor: 'nwse-resize',
           pointerEvents: 'auto',
         }}
@@ -137,7 +136,7 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
         data-selection-box
         style={{
           position: 'absolute',
-          left: '-4px',
+          right: '-4px',
           top: '-4px',
           width: `${HANDLE_SIZE}px`,
           height: `${HANDLE_SIZE}px`,
@@ -153,7 +152,7 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
         style={{
           position: 'absolute',
           left: '-4px',
-          top: '-4px',
+          bottom: '-4px',
           width: `${HANDLE_SIZE}px`,
           height: `${HANDLE_SIZE}px`,
           border: '1.5px solid #007BFF',
@@ -167,8 +166,8 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
         data-selection-box
         style={{
           position: 'absolute',
-          left: '-4px',
-          top: '-4px',
+          bottom: '-4px',
+          right: '-4px',
           width: `${HANDLE_SIZE}px`,
           height: `${HANDLE_SIZE}px`,
           backgroundColor: '#007BFF',

@@ -1,4 +1,4 @@
-import { ExcalidrawElement } from "../types";
+import { ExcalidrawElement } from "../types/types";
 
 export class ShapeRenderer {
   constructor(private ctx: CanvasRenderingContext2D) {}

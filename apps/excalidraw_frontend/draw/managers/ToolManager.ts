@@ -1,4 +1,4 @@
-import { AppState } from "./types";
+import { AppState } from "../types/types";
 
 export class ToolManager {
   private state: AppState;

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Game } from "@/draw/Game";
 import { Topbar } from "./Topbar";
 import Sidebar from "./Sidebar";
-import { ExcalidrawElement } from "@/draw/types";
-import { UndoRedoManager } from "@/draw/UndoRedoManager";
-import { Tool } from "@/draw/types";
-import SelectionBox from "@/draw/Selection/SelectionBox";
+import { ExcalidrawElement } from "@/draw/types/types";
+import { UndoRedoManager } from "@/draw/managers/UndoRedoManager";
+import { Tool } from "@/draw/types/types";
+import SelectionBox from "./SelectionBox";
 
 export function Canvas({
   roomId,
@@ -15,7 +15,7 @@ export function Canvas({
   roomId: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [game, setGame] = useState<Game>();
+  const gameRef = useRef<Game>(null);
   const [selectedTool, setSelectedTool] = useState<Tool>("selection");
   const [selectedElement, setSelectedElement] =
     useState<ExcalidrawElement | null>(null);
@@ -26,10 +26,10 @@ export function Canvas({
   const clearSelectionAndSidebar = () => {
     setSelectedElement(null);
     setSelectionBounds(null);
-    game?.clearSelection();
+    gameRef.current?.clearSelection();
     if (selectedTool !== "selection" && selectedTool !== "pan") {
       setSelectedTool("selection");
-      game?.setTool("selection");
+      gameRef.current?.setTool("selection");
     }
   };
 
@@ -39,13 +39,13 @@ export function Canvas({
       if (canvasRef.current) {
         canvasRef.current.width = window.innerWidth;
         canvasRef.current.height = window.innerHeight;
-        game?.render();
+        gameRef.current?.render();
       }
     };
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [game]);
+  }, [gameRef.current]);
 
   useEffect(() => {
     if (canvasRef.current) {
@@ -53,7 +53,7 @@ export function Canvas({
       canvasRef.current.height = window.innerHeight;
 
       const g = new Game(canvasRef.current, roomId, socket);
-      setGame(g);
+      gameRef.current=g;
       g.render();
 
       g.onSelectionChange((element) => {
@@ -99,7 +99,7 @@ export function Canvas({
         const isCanvasClick = target.tagName.toLowerCase() === "canvas";
       
         // Clear selection only if clicking on empty canvas area
-        if (isCanvasClick && !game?.isClickingElement(e)) {
+        if (isCanvasClick && !gameRef.current?.isClickingElement(e)) {
           clearSelectionAndSidebar();
         }
       };
@@ -142,26 +142,26 @@ export function Canvas({
           element={selectionBounds.element}
           bounds={selectionBounds.screenBounds}
           onResize={(width, height) => {
-            if (game && selectedElement) {
+            if (gameRef.current && selectedElement) {
               const updatedElement = {
                 ...selectedElement,
                 width,
                 height,
               };
-              game.scene.updateElement(updatedElement);
-              game.render();
-              setSelectionBounds(game.renderSelectionBox());
+              gameRef.current.scene.updateElement(updatedElement);
+              gameRef.current.render();
+              setSelectionBounds(gameRef.current.renderSelectionBox());
             }
           }}
           onRotate={(angle: number) => {
-            if (game && selectedElement) {
+            if (gameRef.current && selectedElement) {
               const updatedElement = {
                 ...selectedElement,
                 angle,
               };
-              game.scene.updateElement(updatedElement);
-              game.render();
-              setSelectionBounds(game.renderSelectionBox());
+              gameRef.current.scene.updateElement(updatedElement);
+              gameRef.current.render();
+              setSelectionBounds(gameRef.current.renderSelectionBox());
             }
           }}
         />
@@ -170,7 +170,7 @@ export function Canvas({
         selectedTool={selectedTool}
         setSelectedTool={(tool) => {
           setSelectedTool(tool);
-          game?.setTool(tool);
+          gameRef.current?.setTool(tool);
           if (tool !== "selection") {
             setSelectedElement(null);
             setSelectionBounds(null);
@@ -181,17 +181,17 @@ export function Canvas({
         selectedTool={selectedTool}
         selectedElement={selectedElement}
         onClose={clearSelectionAndSidebar}
-        setFontSize={(size) => game?.setFontSize(size)}
-        setFontFamily={(family) => game?.setFontFamily(family)}
-        setTextAlign={(align) => game?.setTextAlign(align)}
-        setStrokeColor={(color) => game?.setStrokeColor(color)}
-        setFillColor={(color) => game?.setFillColor(color)}
-        setStrokeWidth={(width) => game?.setStrokeWidth(width)}
-        setOpacity={(opacity) => game?.setOpacity(opacity)}
+        setFontSize={(size) => gameRef.current?.setFontSize(size)}
+        setFontFamily={(family) => gameRef.current?.setFontFamily(family)}
+        setTextAlign={(align) => gameRef.current?.setTextAlign(align)}
+        setStrokeColor={(color) => gameRef.current?.setStrokeColor(color)}
+        setFillColor={(color) => gameRef.current?.setFillColor(color)}
+        setStrokeWidth={(width) => gameRef.current?.setStrokeWidth(width)}
+        setOpacity={(opacity) => gameRef.current?.setOpacity(opacity)}
         setStrokeStyle={(style) =>
-          game?.setStrokeStyle(style as "solid" | "dashed" | "dotted")
+          gameRef.current?.setStrokeStyle(style as "solid" | "dashed" | "dotted")
         }
-        resetCamera={() => game?.resetCamera()}
+        resetCamera={() => gameRef.current?.resetCamera()}
       />
     </div>
   );

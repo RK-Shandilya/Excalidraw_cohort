@@ -1,4 +1,4 @@
-import { ExcalidrawElement } from "./types";
+import { ExcalidrawElement } from "../types/types";
 
 export class UndoRedoManager {
   private undoStack: ExcalidrawElement[][] = [];

@@ -22,7 +22,7 @@ export type ExcalidrawElement = {
   backgroundColor: string;
   fillStyle: "solid" | "hachure";
   strokeWidth: number;
-  roughness: number;
+  roughness?: number;
   opacity: number;
   points?: Point[];
   isDeleted?: boolean;

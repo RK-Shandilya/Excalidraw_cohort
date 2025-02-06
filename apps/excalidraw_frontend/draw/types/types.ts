@@ -42,5 +42,6 @@ export type AppState = {
   isResizing: boolean;
   isRotating: boolean;
   isPanning: boolean;
+  isDrawing: boolean;
   startBoundingBox: { x: number; y: number; width: number; height: number } | null;
 };

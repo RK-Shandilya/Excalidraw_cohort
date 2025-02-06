@@ -1,132 +1,151 @@
-import { Point, Viewport } from "./types/types";
+import { AppState, Point, Viewport } from "./types/types";
 
 export class Camera {
   private viewport: Viewport;
-  private scale: number = 1;
-
-  private isDragging = false;
+  private isDragging: boolean = false;
   private lastMousePos: Point = { x: 0, y: 0 };
+  private state: AppState | null = null;
 
-  constructor(private canvas: HTMLCanvasElement) {
-    console.log("Initializing camera class...", canvas);
+  constructor(private canvas: HTMLCanvasElement, state? : AppState) {
+    // Initialize viewport: center of the window and a zoom level of 1.
     this.viewport = {
       offset: {
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
       },
-      zoom: 1
+      zoom: 1,
     };
-    console.log("Initial viewport:", this.viewport); // Debugging log
+    this.state = state || null;
     this.setupEventListeners();
   }
 
-  public resetViewport() {
+  public resetViewport(): void {
     this.viewport = {
       offset: {
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
       },
-      zoom: 1
+      zoom: 1,
     };
-  }
-
-  private setupEventListeners() {
-    this.canvas.addEventListener("mousedown", this.handleMouseDown);
-    this.canvas.addEventListener("mousemove", this.handleMouseMove);
-    this.canvas.addEventListener("mouseup", this.handleMouseUp);
-    this.canvas.addEventListener("wheel", this.handleWheel);
   }
 
   public getViewport(): Viewport {
     return this.viewport;
   }
 
-  public setViewport(viewport: Viewport) {
+  public setViewport(viewport: Viewport): void {
     this.viewport = viewport;
   }
 
-  private handleMouseDown = (e: MouseEvent) => {
-    if (e.button === 1 || e.button === 2) {
+  private handleMouseDown = (e: MouseEvent): void => {
+
+    if (this.state?.currentTool !== "pan") {
+      return; // Stop event propagation for non-pan tools
+    }
+    // Use the left mouse button (button 0) for dragging.
+    if (e.button === 0) {
       this.isDragging = true;
       this.lastMousePos = { x: e.clientX, y: e.clientY };
     }
   };
 
-  private handleMouseMove = (e: MouseEvent) => {
+  private handleMouseMove = (e: MouseEvent): void => {
     if (!this.isDragging) return;
+
+
+    if (this.state?.currentTool !== "pan") {
+      return; // Stop event propagation for non-pan tools
+    }
+
     const dx = e.clientX - this.lastMousePos.x;
     const dy = e.clientY - this.lastMousePos.y;
 
-    this.viewport.offset.x += dx / this.viewport.zoom;
-    this.viewport.offset.y += dy / this.viewport.zoom;
+    // Update the offset based on mouse movement.
+    this.viewport.offset.x += dx;
+    this.viewport.offset.y += dy;
 
     this.lastMousePos = { x: e.clientX, y: e.clientY };
   };
 
-  private handleMouseUp = () => {
+  private handleMouseUp = (): void => {
     this.isDragging = false;
   };
 
-  private handleWheel = (e: WheelEvent) => {
-    e.preventDefault();
-  
-    const zoom = this.viewport.zoom;
-    const mouseX = e.clientX - this.canvas.offsetLeft;
-    const mouseY = e.clientY - this.canvas.offsetTop;
-  
-    // Convert mouse position to world space before zoom
-    const worldX = (mouseX - this.viewport.offset.x) / zoom;
-    const worldY = (mouseY - this.viewport.offset.y) / zoom;
-  
-    // Calculate new zoom with smoother factor
+  private handleWheel = (e: WheelEvent): void => {
+    e.preventDefault(); // Prevent default scrolling behavior
+
+    const { zoom, offset } = this.viewport;
+    // Use canvas bounding rect to compute correct mouse coordinates.
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Convert the mouse position from screen space to world space.
+    const worldX = (mouseX - offset.x) / zoom;
+    const worldY = (mouseY - offset.y) / zoom;
+
+    // Apply a zoom factor based on scroll delta.
     const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
     const newZoom = Math.min(Math.max(0.1, zoom * zoomFactor), 5);
-    
-    // Only update if zoom actually changed
+
+    // Only update if there is a change in zoom.
     if (newZoom !== zoom) {
       this.viewport.zoom = newZoom;
-      
-      // Update offset to keep mouse position fixed in world space
+      // Adjust offset to keep the world coordinate under the mouse fixed.
       this.viewport.offset.x = mouseX - worldX * newZoom;
       this.viewport.offset.y = mouseY - worldY * newZoom;
     }
   };
 
-  public pan(dx: number, dy: number) {
-    const maxPan = 10000; // Prevent panning too far
-    const newOffsetX = this.viewport.offset.x + dx / this.viewport.zoom;
-    const newOffsetY = this.viewport.offset.y + dy / this.viewport.zoom;
-    
-    this.viewport.offset.x = Math.min(Math.max(-maxPan, newOffsetX), maxPan);
-    this.viewport.offset.y = Math.min(Math.max(-maxPan, newOffsetY), maxPan);
+  public pan(dx: number, dy: number): void {
+    this.viewport.offset.x += dx;
+    this.viewport.offset.y += dy;
   }
 
-  screenToWorld(screenX: number, screenY: number): Point {
+  public screenToWorld(screenX: number, screenY: number): Point {
     return {
       x: (screenX - this.viewport.offset.x) / this.viewport.zoom,
       y: (screenY - this.viewport.offset.y) / this.viewport.zoom,
     };
   }
 
-  worldToScreen(worldX: number, worldY: number): Point {
+  public worldToScreen(worldX: number, worldY: number): Point {
     return {
       x: worldX * this.viewport.zoom + this.viewport.offset.x,
       y: worldY * this.viewport.zoom + this.viewport.offset.y,
     };
   }
 
-  applyTransform(ctx: CanvasRenderingContext2D) {
-    console.log("Applying camera transform:", this.viewport); // Debugging log
-    ctx.save();
+  /**
+   * Apply the current camera transform to the canvas context.
+   * Saves the context so that subsequent restoreTransform() reverts the changes.
+   */
+  public applyTransform(ctx: CanvasRenderingContext2D): void {
+    console.log("apply Transform");
+    ctx.save(); // Save current context state.
+    // Reset the transform to a known state.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Apply camera translation and scaling.
     ctx.translate(this.viewport.offset.x, this.viewport.offset.y);
     ctx.scale(this.viewport.zoom, this.viewport.zoom);
   }
 
-  restoreTransform(ctx: CanvasRenderingContext2D) {
+  /**
+   * Restore the canvas context state.
+   * This should be called after all drawing operations are complete.
+   */
+  public restoreTransform(ctx: CanvasRenderingContext2D): void {
     ctx.restore();
   }
 
-  cleanup() {
+  public setupEventListeners(){
+    this.canvas.addEventListener("mousedown", this.handleMouseDown);
+    this.canvas.addEventListener("mousemove", this.handleMouseMove);
+    this.canvas.addEventListener("mouseup", this.handleMouseUp);
+    this.canvas.addEventListener("wheel", this.handleWheel);
+  }
+
+  public cleanup(): void {
     this.canvas.removeEventListener("mousedown", this.handleMouseDown);
     this.canvas.removeEventListener("mousemove", this.handleMouseMove);
     this.canvas.removeEventListener("mouseup", this.handleMouseUp);
@@ -134,6 +153,6 @@ export class Camera {
   }
 
   public getScale(): number {
-    return this.scale;
+    return this.viewport.zoom;
   }
 }

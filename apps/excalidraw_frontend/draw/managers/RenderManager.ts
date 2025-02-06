@@ -1,11 +1,12 @@
-import { ExcalidrawElement } from "./types/types";
-import { Camera } from "./Camera";
-import { ShapeRenderer } from "./Render/ShapeRenderer";
-import { FreeDrawRenderer } from "./Render/FreedrawRenderer";
-import { TextRenderer } from "./Render/TextRenderer";
-import { GridRenderer } from "./Render/GridRenderer";
+import { ExcalidrawElement } from "../types/types";
+import { Camera } from "../Camera";
+import { ShapeRenderer } from "../Render/ShapeRenderer";
+import { FreeDrawRenderer } from "../Render/FreedrawRenderer";
+import { TextRenderer } from "../Render/TextRenderer";
+import { GridRenderer } from "../Render/GridRenderer";
 
 export class Renderer {
+  private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private camera: Camera;
   private shapeRenderer: ShapeRenderer;
@@ -13,10 +14,13 @@ export class Renderer {
   private textRenderer: TextRenderer;
   private gridRenderer: GridRenderer;
 
+  public isDirty = true
+
   constructor(canvas: HTMLCanvasElement, camera: Camera) {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not get 2D context");
     this.ctx = context;
+    this.canvas = canvas;
     this.camera = camera;
     
     this.shapeRenderer = new ShapeRenderer(this.ctx);
@@ -30,36 +34,50 @@ export class Renderer {
     this.ctx.clearRect(0, 0, width, height);
   }
 
+  public markDirty() {
+    console.log("Canvas marked as dirty");
+    this.isDirty = true;
+  }
+
+
+
   render(elements: ExcalidrawElement[]) {
+    if (!this.isDirty) return; // Skip rendering if not dirty
+    console.log("in render 2");
     // Clear the canvas
     this.clear();
-
+  
     // Draw background and grid in screen space
     const { width, height } = this.ctx.canvas;
     this.ctx.fillStyle = "#ffffff";
     this.ctx.fillRect(0, 0, width, height);
     this.gridRenderer.drawGrid();
-
+  
     // Apply camera transform for all elements
     this.ctx.save();
     this.camera.applyTransform(this.ctx);
-
+  
     // Render all elements
     for (const element of elements) {
       this.renderElement(element);
     }
-
+  
     // Restore to screen space
     this.ctx.restore();
+  
+    // Reset the dirty flag after rendering
+    this.isDirty = false;
   }
 
-  renderSelectionBox(selectionBox: React.ReactNode) {
-    // Use a React portal or custom logic to render the selection box
-    // For simplicity, we'll assume a method to render React components
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    // this.render(selectionBox, container);
-  }
+  renderSelectionBox(box: { x: number; y: number; width: number; height: number }) {
+    this.ctx.save();
+    this.ctx.strokeStyle = "blue";
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([4, 2]);
+    this.ctx.strokeRect(box.x, box.y, box.width, box.height);
+    this.ctx.restore();
+  }  
+  
 
   private renderElement(element: ExcalidrawElement) {
     if (element.isDeleted) return;

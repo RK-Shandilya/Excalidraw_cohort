@@ -53,6 +53,7 @@ wss.on("connection", (ws: WebSocket , request) => {
                     currentUser.rooms.push(parsedData.roomId);
                 }   
                 break;
+
             case "leaveRoom":
                 const user = users.find((x)=>x.ws===ws);
                 if (!user) {
@@ -63,18 +64,32 @@ wss.on("connection", (ws: WebSocket , request) => {
                 break;
 
             case 'chat':
-                const roomId = parsedData.roomId;
+                const chatRoomId = parsedData.roomId;
                 const message = parsedData.message;
 
                 users.forEach(( user) => {
-                    if (user.rooms.includes(roomId)) {
+                    if (user.rooms.includes(chatRoomId)) {
                         user.ws.send(JSON.stringify({
                             type: "chat",
                             message: message,
-                            roomId
+                            roomId: chatRoomId
                         }))
                     }
                 })
+                break;
+
+            case "scene-update":
+                const { roomId, elements } = parsedData;
+                users.forEach((user) => {
+                    if (user.rooms.includes(roomId)) {
+                        user.ws.send(JSON.stringify({
+                            type: "scene-update",
+                            roomId,
+                            elements,
+                        }));
+                    }
+                });
+                break;
         }
     })
 

@@ -23,8 +23,8 @@ export class EventManager {
   private shouldRender: boolean = false;
   private socket: WebSocket;
   private roomId: string;
-  private isPanning: boolean = false;
-  private lastPanPoint: Point | null = null;
+
+  private lastMousePos: Point = { x: 0, y: 0 }
 
   private elementUpdateCallback?: (elements: ExcalidrawElement[]) => void;
 
@@ -64,63 +64,55 @@ export class EventManager {
     this.state = state;
   }
 
-  private handleMouseDown = (event: MouseEvent) => {
-    this.isDrawing = true;
+  // In EventManager.ts
+private handleMouseDown = (event: MouseEvent) => {
+  this.isDrawing = true;
 
-    if (this.state.currentTool === "pan") {
-      this.isPanning = true;
-      this.lastPanPoint = { x: event.clientX, y: event.clientY };
-      this.stateManager.setPanning(true);
-      // Prevent text selection during panning
-      event.preventDefault();
-      return;
+  if (this.state.currentTool === "pan") {
+    this.stateManager.setPanning(true);
+    this.camera.handleMouseDown(event); // Delegate to Camera
+    return;
+  }
+
+  const point = this.camera.screenToWorld(event.clientX, event.clientY);
+
+  if (this.state.currentTool === "selection") {
+    const clickedElement = this.elementManager.findElementAtPoint(point);
+    if (clickedElement) {
+      this.selectionManager.handleSelection(point, event.shiftKey);
+      this.selectionManager.setSelectedElements([clickedElement]);
+      event.stopPropagation();
+    } else {
+      // Clicked empty space
+      this.selectionManager.setSelectedElements([]);
+      this.selectionManager.clearSelection();
     }
+    return;
+  }
 
+  this.handleDrawingTools(point, event);
+};
+
+private handleMouseMove = (event: MouseEvent) => {
+  if (this.state.currentTool === "eraser" && this.isDrawing) {
     const point = this.camera.screenToWorld(event.clientX, event.clientY);
+    this.eraserManager.updateEraserPath(point);
+    this.eraserManager.showEraserCursor(event.clientX, event.clientY);
+  }
 
-    if (this.state.currentTool === "selection") {
-      console.log("Selection tool active");
-      const clickedElement = this.elementManager.findElementAtPoint(point);
-      if (clickedElement) {
-        console.log("Element selected:", clickedElement);
-        this.selectionManager.handleSelection(point, false);
-        this.stateManager.setSelectedElements([clickedElement]);
-        event.stopPropagation();
-      }
-      return;
-    }
+  if (this.state.currentTool === "pan" && this.state.isPanning) {
+    this.camera.handleMouseMove(event); // Delegate to Camera
+    return;
+  }
 
-    this.handleDrawingTools(point, event);
-  };
+  if (!this.isDrawing) return;
 
-  private handleMouseMove = (event: MouseEvent) => {
-    if (this.state.currentTool === "eraser" && this.isDrawing) {
-      const point = this.camera.screenToWorld(event.clientX, event.clientY);
-      this.eraserManager.updateEraserPath(point);
-      this.eraserManager.showEraserCursor(event.clientX, event.clientY);
-    }
+  const point = this.camera.screenToWorld(event.clientX, event.clientY);
 
-    if (this.isPanning && this.lastPanPoint && this.state.currentTool === "pan") {
-      const dx = event.clientX - this.lastPanPoint.x;
-      const dy = event.clientY - this.lastPanPoint.y;
-      
-      // Apply the pan with the current scale factor
-      this.handlePanning(dx, dy);
-      
-      // Update last pan point
-      this.lastPanPoint = { x: event.clientX, y: event.clientY };
-      return;
-    }
-
-    if (!this.isDrawing) return;
-
-    const point = this.camera.screenToWorld(event.clientX, event.clientY);
-
-    // Handle drawing tools
-    if (this.state.draggingElement) {
-      this.handleDragging(point);
-    }
-  };
+  if (this.state.draggingElement) {
+    this.handleDragging(point);
+  }
+};
 
   private handleDrawingTools(point: Point, event: MouseEvent) {
     let element;
@@ -144,8 +136,6 @@ export class EventManager {
 
   private handleMouseLeave = () => {
     this.eraserManager.hideEraserCursor();
-    this.isPanning = false;
-    this.lastPanPoint = null;
     if (this.state.isPanning) {
       this.stateManager.setPanning(false);
     }
@@ -158,10 +148,8 @@ export class EventManager {
   // In EventManager.ts
   private handleMouseUp = () => {
     this.isDrawing = false;
-    this.isPanning = false;
-    this.lastPanPoint = null;
     this.stateManager.setPanning(false);
-
+  
     if (this.state.draggingElement) {
       if (this.state.currentTool === "eraser") {
         this.eraserManager.removeEraserPath();
@@ -173,17 +161,6 @@ export class EventManager {
     }
     this.renderer.render(this.scene.getElements());
   };
-
-  // Method to handle panning
-  private handlePanning(dx: number, dy: number) {
-    const scale = this.camera.getScale();
-
-    this.camera.pan(dx / scale, dy / scale);
-    
-    requestAnimationFrame(() => {
-      this.renderer.render(this.scene.getElements());
-    });
-  }
 
   // Method to handle element dragging
   private handleDragging(point: Point) {

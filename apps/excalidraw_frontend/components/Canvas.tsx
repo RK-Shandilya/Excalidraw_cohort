@@ -53,10 +53,18 @@ export function Canvas({
       gameRef.current = game;
       game.render();
 
+      // In Canvas.tsx
       game.onSelectionChange((element: any) => {
-        setSelectedElement((prev) => (element?.id !== prev?.id ? element : prev));
-        setSelectionBounds(element ? game.renderSelectionBox() : null);
-      });      
+        console.log("Selected Element:", element);
+        setSelectedElement(element);
+        if (element && gameRef.current) {
+          const bounds = gameRef.current?.renderSelectionBox();
+          console.log("Selection Bounds:", bounds);
+          setSelectionBounds(bounds);
+        } else {
+          setSelectionBounds(null);
+        }
+      });    
 
       game.onElementUpdate((elements: any) => {
         undoRedoManager.pushState(elements);
@@ -113,7 +121,7 @@ export function Canvas({
         game.destroy();
       };
     }
-  }, []);
+  }, [roomId, socket]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">

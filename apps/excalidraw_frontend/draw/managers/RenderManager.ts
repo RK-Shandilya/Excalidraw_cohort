@@ -4,6 +4,7 @@ import { ShapeRenderer } from "../Render/ShapeRenderer";
 import { FreeDrawRenderer } from "../Render/FreedrawRenderer";
 import { TextRenderer } from "../Render/TextRenderer";
 import { GridRenderer } from "../Render/GridRenderer";
+import { SelectionManager } from "./SelectionManager";
 
 export class Renderer {
   private canvas: HTMLCanvasElement;
@@ -14,9 +15,9 @@ export class Renderer {
   private textRenderer: TextRenderer;
   private gridRenderer: GridRenderer;
 
-  public isDirty = true
+  public isDirty: Boolean = true
 
-  constructor(canvas: HTMLCanvasElement, camera: Camera) {
+  constructor(canvas: HTMLCanvasElement, camera: Camera, private selectionManager: SelectionManager) {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not get 2D context");
     this.ctx = context;
@@ -29,7 +30,7 @@ export class Renderer {
     this.gridRenderer = new GridRenderer(this.ctx, this.camera);
   }
 
-  clear() {
+  private clear() {
     const { width, height } = this.ctx.canvas;
     this.ctx.clearRect(0, 0, width, height);
   }
@@ -39,34 +40,36 @@ export class Renderer {
     this.isDirty = true;
   }
 
-
-
-  render(elements: ExcalidrawElement[]) {
+  // In Renderer.ts
+  public render(elements: ExcalidrawElement[]) {
+    console.log("Rendering canvas...");
     if (!this.isDirty) return; // Skip rendering if not dirty
-    console.log("in render 2");
-    // Clear the canvas
+
     this.clear();
-  
-    // Draw background and grid in screen space
+
     const { width, height } = this.ctx.canvas;
     this.ctx.fillStyle = "#ffffff";
     this.ctx.fillRect(0, 0, width, height);
     this.gridRenderer.drawGrid();
-  
-    // Apply camera transform for all elements
+
     this.ctx.save();
     this.camera.applyTransform(this.ctx);
-  
-    // Render all elements
+
     for (const element of elements) {
       this.renderElement(element);
     }
-  
-    // Restore to screen space
+
+    if (this.selectionManager.getSelectedElements().length > 0) {
+      const selectionBox = this.selectionManager.renderSelectionBox();
+      console.log("selection Box", selectionBox);
+      if (selectionBox) {
+        this.renderSelectionBox(selectionBox.screenBounds);
+      }
+    }
+
     this.ctx.restore();
-  
-    // Reset the dirty flag after rendering
-    this.isDirty = false;
+
+    this.isDirty = false; // Reset the dirty flag
   }
 
   renderSelectionBox(box: { x: number; y: number; width: number; height: number }) {

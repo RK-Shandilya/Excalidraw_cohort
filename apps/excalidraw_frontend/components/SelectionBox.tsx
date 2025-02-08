@@ -31,6 +31,8 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
     const startWidth = width;
     const startHeight = height;
 
+    console.log("Resize Start:", { startX, startY, startWidth, startHeight });
+
     const onMouseMove = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
       moveEvent.stopPropagation();
@@ -58,7 +60,7 @@ const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, 
           newHeight = startHeight + deltaY;
           break;
       }
-  
+      console.log("Resize Update:", { newWidth, newHeight });
       onResize(Math.max(1, newWidth), Math.max(1, newHeight));
     };
 

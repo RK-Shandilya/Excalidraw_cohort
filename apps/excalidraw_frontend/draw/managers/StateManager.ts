@@ -1,7 +1,6 @@
 import { AppState, ExcalidrawElement, Tool } from '../types/types';
-import { Scene } from './SceneManager';
-import { SelectionManager } from './SelectionManager';
 
+// In AppStateManager.ts
 export class AppStateManager {
   private state: AppState = {
     currentTool: 'selection',
@@ -13,44 +12,27 @@ export class AppStateManager {
     isDrawing: false,
     startBoundingBox: null,
   };
-  
+
   private updateListeners: ((state: AppState) => void)[] = [];
 
   constructor(
-    private scene: Scene, 
-    private selectionManager: SelectionManager, 
   ) {
-    this.setupListeners();
-  }
-
-  private setupListeners() {
-    this.scene.addUpdateListener((elements) => {
-      this.setSelectedElements(elements);
-    });
-
-    this.selectionManager.onSelectionChange((elements) => {
-      this.setSelectedElements(elements || []);
-    });
+    
   }
 
   public setTool(tool: Tool) {
     this.state = { ...this.state, currentTool: tool };
-    this.notifyUpdateListeners();
-  }
-
-  public setSelectedElements(elements: ExcalidrawElement[]) {
-    this.state = { ...this.state, selectedElements: elements };
-    this.notifyUpdateListeners();
+    this.notifyUpdateListeners(); // Notify listeners
   }
 
   public setDraggingElement(element: ExcalidrawElement | null) {
     this.state = { ...this.state, draggingElement: element };
-    this.notifyUpdateListeners();
+    this.notifyUpdateListeners(); // Notify listeners
   }
 
   public setPanning(isPanning: boolean) {
     this.state = { ...this.state, isPanning };
-    this.notifyUpdateListeners();
+    this.notifyUpdateListeners(); // Notify listeners
   }
 
   public getState(): AppState {
@@ -76,6 +58,12 @@ export class AppStateManager {
       startBoundingBox: null,
       isDrawing: false,
     };
+    this.notifyUpdateListeners(); // Notify listeners
+  }
+
+  public setSelectedElements(elements: ExcalidrawElement[]) {
+    this.state = { ...this.state, selectedElements: elements };
     this.notifyUpdateListeners();
   }
+
 }

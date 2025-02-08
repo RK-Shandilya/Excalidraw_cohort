@@ -46,14 +46,51 @@ export class Game {
       isDrawing: false
     };
 
+    // In Game.ts
+this.scene = new Scene(); // 1. Initialize Scene first
 
-    this.camera = new Camera(canvas, this.state);
-    this.elementManager = new ElementManager(this.scene, this.ERASER_SIZE);
-    this.selectionManager = new SelectionManager(this.camera, this.scene, this.elementManager, this.state);
-    this.renderManager = new Renderer(canvas,this.camera);
-    this.drawingManager = new DrawingManager(this.scene, this.state, this.camera, this.renderManager);
-    this.stateManager = new AppStateManager(this.scene, this.selectionManager);
-    this.eraserManager = new EraserTool(this.scene, this.eraserPath, this.eraserElement, this.eraserCursor, this.ERASER_SIZE)
+this.elementManager = new ElementManager(this.scene, this.ERASER_SIZE); // 2. Initialize ElementManager
+
+this.stateManager = new AppStateManager(); // 4. Initialize AppStateManager
+// Initialize SelectionManager without Camera (temporarily)
+this.selectionManager = new SelectionManager(
+  null as any, // Temporarily pass null for Camera
+  this.scene,
+  this.elementManager,
+  this.stateManager
+);
+
+
+
+this.camera = new Camera(canvas, this.stateManager, this.scene); // 5. Initialize Camera
+
+this.renderManager = new Renderer(canvas, this.camera, this.selectionManager);
+// Now that Camera is initialized, update the SelectionManager with the correct Camera
+this.selectionManager = new SelectionManager(
+  this.camera,
+  this.scene,
+  this.elementManager,
+  this.stateManager
+);
+
+
+
+this.drawingManager = new DrawingManager(
+  this.scene,
+  this.state,
+  this.camera,
+  this.renderManager
+);
+
+this.eraserManager = new EraserTool(
+  this.scene,
+  this.eraserPath,
+  this.eraserElement,
+  this.eraserCursor,
+  this.ERASER_SIZE
+);
+
+    this.camera.setRenderer(this.renderManager);
 
     this.eventManager = new EventManager(
       canvas, 
@@ -96,11 +133,13 @@ export class Game {
   }
   
   onSelectionChange(callback: any){
+    console.log("inside game.tsx")
     this.selectionManager.onSelectionChange(callback);
   }
 
-  renderSelectionBox(){
-    this.selectionManager.renderSelectionBox();
+  public renderSelectionBox(){
+    const element = this.selectionManager.renderSelectionBox();
+    return element
   }
 
   onElementUpdate(callback: any) {
@@ -158,6 +197,7 @@ export class Game {
   }
 
   public setPanning(isPanning: boolean) {
+
     this.stateManager.setPanning(isPanning);
   }
 }

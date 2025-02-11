@@ -47,7 +47,9 @@ export class SelectionManager {
   }
 
   public getSelectedElements() {
-    return this.stateManager.getState().selectedElements; // Get selected elements from AppStateManager
+    const selectedElements = this.stateManager.getState().selectedElements;
+    console.log("Selected Elements:", selectedElements); // Log selected elements
+    return selectedElements;
   }
 
   public setSelectedElements(elements: ExcalidrawElement[]) {
@@ -90,42 +92,50 @@ export class SelectionManager {
     });
   }
   // In SelectionManager.ts
-public renderSelectionBox() {
-  const selectedElements = this.getSelectedElements();
-  if (selectedElements.length === 0) return null;
+  public renderSelectionBox() {
+    const selectedElements = this.getSelectedElements();
+    if (selectedElements.length === 0) return null;
 
-  const element = selectedElements[0];
-  if (!element) return null;
+    const element = selectedElements[0];
+    if (!element) return null;
 
-  // Convert world coordinates to screen coordinates
-  const screenPos = this.camera.worldToScreen(element.x, element.y);
-  console.log("screenPos", screenPos);
-  const zoom = this.camera.getViewport().zoom; // Use zoom from viewport
+    // Get camera properties
+    const zoom = this.camera.getScale();
+    const viewport = this.camera.getViewport();
 
-  console.log("Rendering Selection Box:", {
-    element,
-    screenBounds: {
-      x: screenPos.x,
-      y: screenPos.y,
-      width: (element.width || 0) * zoom,
-      height: (element.height || 0) * zoom,
-      angle: element.angle || 0,
-    },
-  });
+    // Get bounding box in world coordinates
+    const boundingBox = this.elementManager.getBoundingBox(element);
+    if (!boundingBox) return null;
 
-  return {
-    element,
-    screenBounds: {
-      x: screenPos.x,
-      y: screenPos.y,
-      width: (element.width || 0) * zoom,
-      height: (element.height || 0) * zoom,
-      angle: element.angle || 0,
-    },
-  };
+    // Transform to screen space
+    const screenBounds = {
+        x: (boundingBox.x * zoom) + viewport.offset.x,
+        y: (boundingBox.y * zoom) + viewport.offset.y,
+        width: boundingBox.width * zoom,
+        height: boundingBox.height * zoom,
+        angle: boundingBox.angle
+    };
+
+    return {
+        selectedElements,
+        screenBounds,
+    };
 }
+
 
   public onElementUpdate(callback: (elements: ExcalidrawElement[]) => void) {
     this.elementUpdateCallback = callback;
+  }
+
+  public isPointInSelection(point: Point): boolean {
+    const selectedElements = this.getSelectedElements();
+    
+    for (const element of selectedElements) {
+      if (this.elementManager.isPointInElement(this.camera.screenToWorld(point), element)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 }

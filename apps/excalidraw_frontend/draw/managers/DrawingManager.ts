@@ -42,8 +42,8 @@ export class DrawingManager {
     const element: ExcalidrawElement = {
       id: crypto.randomUUID(),
       type: "text",
-      x: this.camera.screenToWorld(screenX, screenY).x,
-      y: this.camera.screenToWorld(screenX, screenY).y,
+      x: this.camera.screenToWorld({ x: screenX, y: screenY }).x,
+      y: this.camera.screenToWorld({ x: screenX, y: screenY }).y,
       width: 0,
       height: 0,
       text: "",

@@ -9,11 +9,11 @@ interface ColorPickerProps {
 
 export const ColorPicker: React.FC<ColorPickerProps> = ({ selectedElement, onChange }) => {
   const colors = [
-    "#000000", // Black
-    "#ff0000", // Red
-    "#00ff00", // Green
-    "#0000ff", // Blue
-    "#ffff00", // Yellow
+    "#000000", 
+    "#ff0000", 
+    "#00ff00", 
+    "#0000ff",
+    "#ffff00",
     "#ff00ff", // Magenta
   ];
 

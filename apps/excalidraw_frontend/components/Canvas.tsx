@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 import { ExcalidrawElement, Tool } from "@/draw/types/types";
 import { UndoRedoManager } from "@/draw/managers/UndoRedoManager";
 import SelectionBox from "./SelectionBox";
+import { update } from "lodash";
 
 export function Canvas({
   roomId,
@@ -17,8 +18,9 @@ export function Canvas({
   const gameRef = useRef<Game | null>(null);
   const [selectedTool, setSelectedTool] = useState<Tool>("selection");
   const [selectedElement, setSelectedElement] = useState<ExcalidrawElement | null>(null);
-  const [undoRedoManager] = useState(new UndoRedoManager());
   const [selectionBounds, setSelectionBounds] = useState<any>(null);
+  const [camera, setCamera] = useState<any>(null);
+  const [undoRedoManager] = useState(new UndoRedoManager());
 
   const clearSelectionAndSidebar = () => {
     setSelectedElement(null);
@@ -51,20 +53,21 @@ export function Canvas({
 
       const game = new Game(canvas, roomId, socket);
       gameRef.current = game;
+      const camera = game.getCamera();
+      setCamera(camera); // Store the camera in state
       game.render();
 
-      // In Canvas.tsx
-      game.onSelectionChange((element: any) => {
-        console.log("Selected Element:", element);
-        setSelectedElement(element);
+      game.onSelectionChange((element: ExcalidrawElement) => {
+        const singleElement = Array.isArray(element) ? element[0] : element;
+
+        setSelectedElement(singleElement);
         if (element && gameRef.current) {
-          const bounds = gameRef.current?.renderSelectionBox();
-          console.log("Selection Bounds:", bounds);
+          const bounds = gameRef.current.renderSelectionBox();
           setSelectionBounds(bounds);
         } else {
           setSelectionBounds(null);
         }
-      });    
+      });
 
       game.onElementUpdate((elements: any) => {
         undoRedoManager.pushState(elements);
@@ -105,7 +108,13 @@ export function Canvas({
         const isSidebar = target.closest(".sidebar") !== null;
         const isTopbar = target.closest(".topbar") !== null;
 
-        if (!isCanvasOrChild && !isRotationHandle && !isSelectionBox && !isSidebar && !isTopbar) {
+        if (
+          !isCanvasOrChild &&
+          !isRotationHandle &&
+          !isSelectionBox &&
+          !isSidebar &&
+          !isTopbar
+        ) {
           clearSelectionAndSidebar();
         }
       };
@@ -128,24 +137,74 @@ export function Canvas({
       <canvas ref={canvasRef} className="absolute top-0 left-0 bg-white" />
       {selectionBounds && selectedElement && (
         <SelectionBox
-          element={selectionBounds.element}
+          element={selectedElement}
           bounds={selectionBounds.screenBounds}
-          onResize={(width, height) => {
+          zoom={camera?.getScale()}
+          onResize={(x, y, width, height) => {
             if (gameRef.current && selectedElement) {
-              const updatedElement = { ...selectedElement, width, height };
+              // Convert screen coordinates (x, y) to world coordinates
+              const worldPoint = gameRef.current.getCamera().screenToWorld({ x, y });
+          
+              // Normalize the element's dimensions (handle negative width/height)
+              let normalizedX = worldPoint.x;
+              let normalizedY = worldPoint.y;
+              let normalizedWidth = width;
+              let normalizedHeight = height;
+          
+              if (width < 0) {
+                normalizedX += width; // Adjust x if width is negative
+                normalizedWidth = Math.abs(width);
+              }
+              if (height < 0) {
+                normalizedY += height; // Adjust y if height is negative
+                normalizedHeight = Math.abs(height);
+              }
+          
+              const updatedElement = {
+                ...selectedElement,
+                x: normalizedX, // Normalized world coordinates
+                y: normalizedY, // Normalized world coordinates
+                width: normalizedWidth, // Normalized width
+                height: normalizedHeight, // Normalized height
+              };
+
+              console.log("Updated Element:", updatedElement);
+          
+              // Update the element in the scene
               gameRef.current.scene.updateElement(updatedElement);
+          
+              // Recalculate selection bounds after resizing
+              const newBounds = gameRef.current.renderSelectionBox();
+              console.log("New Selection Bounds:", newBounds);
+              setSelectionBounds(newBounds);
+          
+              // Force a re-render
               gameRef.current.render();
-              setSelectionBounds(gameRef.current.renderSelectionBox());
             }
           }}
-          onRotate={(angle: number) => {
+          
+          onRotate={(angle) => {
             if (gameRef.current && selectedElement) {
-              const updatedElement = { ...selectedElement, angle };
+              // Compute the center **before rotation**
+              const centerX = selectedElement.x + selectedElement.width / 2;
+              const centerY = selectedElement.y + selectedElement.height / 2;
+          
+              // Update only the angle while keeping center fixed
+              const updatedElement = {
+                ...selectedElement,
+                angle,
+                x: centerX - selectedElement.width / 2,
+                y: centerY - selectedElement.height / 2,
+              };
+          
+              console.log("Updated Element (Correct Rotation):", updatedElement);
+          
               gameRef.current.scene.updateElement(updatedElement);
+              const newBounds = gameRef.current.renderSelectionBox();
+              setSelectionBounds(newBounds);
               gameRef.current.render();
-              setSelectionBounds(gameRef.current.renderSelectionBox());
             }
-          }}
+          }}                   
         />
       )}
       <Topbar

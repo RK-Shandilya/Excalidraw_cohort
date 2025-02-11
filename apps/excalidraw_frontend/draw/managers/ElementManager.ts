@@ -12,6 +12,7 @@ export class ElementManager {
 
   findElementAtPoint(point: Point): ExcalidrawElement | null {
     const elements = this.scene.getElements();
+    console.log("Element Found", elements);
     for (let i = elements.length - 1; i >= 0; i--) {
       const element = elements[i];
       if (this.isPointInElement(point, element)) {
@@ -39,8 +40,75 @@ export class ElementManager {
   }
 
   getBoundingBox(element: ExcalidrawElement) {
-    const { x, y, width = 0, height = 0 } = this.normalizeElementDimensions(element);
-    return { x, y, width, height };
+    const { x, y, width = 0, height = 0, angle = 0 } = element;
+
+    // Compute element center
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+
+    // Convert angle to radians
+    const rad = (angle * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Define the four corners relative to (x, y)
+    const corners = [
+        { x, y },                              // Top-left
+        { x: x + width, y },                   // Top-right
+        { x: x + width, y: y + height },       // Bottom-right
+        { x, y: y + height },                  // Bottom-left
+    ];
+
+    // Rotate each corner around the center
+    const rotatedCorners = corners.map((p) => {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+
+        return {
+            x: cx + dx * cos - dy * sin,
+            y: cy + dx * sin + dy * cos,
+        };
+    });
+
+    // Compute correct bounding box dimensions
+    const minX = Math.min(...rotatedCorners.map(p => p.x));
+    const maxX = Math.max(...rotatedCorners.map(p => p.x));
+    const minY = Math.min(...rotatedCorners.map(p => p.y));
+    const maxY = Math.max(...rotatedCorners.map(p => p.y));
+
+    // Compute the actual rotated width and height
+    const rotatedWidth = maxX - minX;
+    const rotatedHeight = maxY - minY;
+
+    return {
+        x: minX,
+        y: minY,
+        width: rotatedWidth,
+        height: rotatedHeight,
+        angle
+    };
+}
+
+
+
+  public resizeElement(element: ExcalidrawElement, newWidth: number, newHeight: number) {
+    // Normalize the new width and height
+    if (newWidth < 0) {
+      element.x += newWidth; // Adjust x if width is negative
+      newWidth = Math.abs(newWidth);
+    }
+    if (newHeight < 0) {
+      element.y += newHeight; // Adjust y if height is negative
+      newHeight = Math.abs(newHeight);
+    }
+  
+    // Update the element's dimensions
+    element.width = newWidth;
+    element.height = newHeight;
+  
+    // Normalize the element again to ensure consistency
+    const normalizedElement = this.normalizeElementDimensions(element);
+    Object.assign(element, normalizedElement);
   }
 
   isPointNearElement(point: Point, element: ExcalidrawElement): boolean {
@@ -131,4 +199,5 @@ export class ElementManager {
     const t = Math.max(0, Math.min(1, ap_ab / ab2));
     return { x: a.x + t * ab.x, y: a.y + t * ab.y };
   }
+
 }

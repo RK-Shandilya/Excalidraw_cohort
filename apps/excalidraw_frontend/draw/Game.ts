@@ -51,21 +51,10 @@ this.scene = new Scene(); // 1. Initialize Scene first
 
 this.elementManager = new ElementManager(this.scene, this.ERASER_SIZE); // 2. Initialize ElementManager
 
-this.stateManager = new AppStateManager(); // 4. Initialize AppStateManager
-// Initialize SelectionManager without Camera (temporarily)
-this.selectionManager = new SelectionManager(
-  null as any, // Temporarily pass null for Camera
-  this.scene,
-  this.elementManager,
-  this.stateManager
-);
+this.stateManager = new AppStateManager();
 
+this.camera = new Camera(canvas, this.stateManager, this.scene); 
 
-
-this.camera = new Camera(canvas, this.stateManager, this.scene); // 5. Initialize Camera
-
-this.renderManager = new Renderer(canvas, this.camera, this.selectionManager);
-// Now that Camera is initialized, update the SelectionManager with the correct Camera
 this.selectionManager = new SelectionManager(
   this.camera,
   this.scene,
@@ -73,7 +62,7 @@ this.selectionManager = new SelectionManager(
   this.stateManager
 );
 
-
+this.renderManager = new Renderer(canvas, this.camera, this.selectionManager);
 
 this.drawingManager = new DrawingManager(
   this.scene,
@@ -129,6 +118,7 @@ this.eraserManager = new EraserTool(
   }
 
   render() {
+    this.renderManager.isDirty = true;
     this.renderManager.render(this.scene.getElements());
   }
   
@@ -147,11 +137,15 @@ this.eraserManager = new EraserTool(
   }
 
   isClickingElement(e: MouseEvent){
-    const point = this.camera.screenToWorld(e.offsetX, e.offsetY);
+    const point = this.camera.screenToWorld({ x: e.offsetX, y: e.offsetY });
     const clickedElement = this.elementManager.findElementAtPoint(point);
     return clickedElement !== null;
   }
 
+  public getCamera(): Camera {
+    return this.camera;
+  }
+  
   public setStrokeColor(color: string) {
     this.updateSelectedElements({ strokeColor: color });
   }

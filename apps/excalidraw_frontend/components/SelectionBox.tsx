@@ -1,5 +1,5 @@
-import React from 'react';
 import { ExcalidrawElement } from '@/draw/types/types';
+import { useState } from 'react';
 
 interface SelectionBoxProps {
   element: ExcalidrawElement;
@@ -10,196 +10,201 @@ interface SelectionBoxProps {
     height: number;
     angle: number;
   };
-  onResize: (width: number, height: number) => void;
+  onResize: (x: number, y: number, width: number, height: number) => void;
   onRotate: (angle: number) => void;
+  zoom: number;
 }
 
-const SelectionBox: React.FC<SelectionBoxProps> = ({ element, bounds, onResize, onRotate }) => {
-  const { x, y, width, height, angle } = bounds;
+export default function SelectionBox({ element, bounds, onResize, onRotate, zoom }: SelectionBoxProps) {
+  const [isResizing, setIsResizing] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
+  const [startBounds, setStartBounds] = useState(bounds);
 
   const HANDLE_SIZE = 8;
-  const HANDLE_OFFSET = HANDLE_SIZE / 2;
-  const ROTATION_HANDLE_OFFSET = 24;
+  const ROTATION_HANDLE_DISTANCE = 20;
 
-  // Handle resize logic
-  const handleResize = (e: React.MouseEvent, handle: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startWidth = width;
-    const startHeight = height;
-
-    console.log("Resize Start:", { startX, startY, startWidth, startHeight });
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      moveEvent.preventDefault();
-      moveEvent.stopPropagation();
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-  
-      let newWidth = startWidth;
-      let newHeight = startHeight;
-  
-      switch (handle) {
-        case 'top-left':
-          newWidth = startWidth - deltaX;
-          newHeight = startHeight - deltaY;
-          break;
-        case 'top-right':
-          newWidth = startWidth + deltaX;
-          newHeight = startHeight - deltaY;
-          break;
-        case 'bottom-left':
-          newWidth = startWidth - deltaX;
-          newHeight = startHeight + deltaY;
-          break;
-        case 'bottom-right':
-          newWidth = startWidth + deltaX;
-          newHeight = startHeight + deltaY;
-          break;
-      }
-      console.log("Resize Update:", { newWidth, newHeight });
-      onResize(Math.max(1, newWidth), Math.max(1, newHeight));
-    };
-
-    const onMouseUp = (upEvent: MouseEvent) => {
-      upEvent.preventDefault();
-      upEvent.stopPropagation();
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+  // Normalize bounds to account for zoom
+  const normalizedBounds = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    angle: bounds.angle
   };
 
-  // Handle rotation logic
-  const handleRotate = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleMouseDown = (e: React.MouseEvent, type: 'resize' | 'rotate', position?: string) => {
     e.stopPropagation();
+    const startPoint = { x: e.clientX, y: e.clientY };
+    setStartPoint(startPoint);
+    setStartBounds({ ...normalizedBounds });
+
+    if (type === 'resize') {
+      setIsResizing(true);
+    } else if (type === 'rotate') {
+      setIsRotating(true);
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (type === 'resize' && position) {
+        const dx = (e.clientX - startPoint.x) / zoom;
+        const dy = (e.clientY - startPoint.y) / zoom;
+        
+        // Apply the element's rotation to the delta coordinates
+        const angle = (startBounds.angle * Math.PI) / 180;
+        const rotatedDx = dx * Math.cos(angle) + dy * Math.sin(angle);
+        const rotatedDy = -dx * Math.sin(angle) + dy * Math.cos(angle);
     
-    const startAngle = Math.atan2(e.clientY - (y + height / 2), e.clientX - (x + width / 2));
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      moveEvent.preventDefault();
-      moveEvent.stopPropagation();
-      const currentAngle = Math.atan2(moveEvent.clientY - (y + height / 2), moveEvent.clientX - (x + width / 2));
-      const deltaAngle = currentAngle - startAngle;
-      onRotate(angle + deltaAngle);
+        // Calculate new bounds in world coordinates
+        let newX = startBounds.x;
+        let newY = startBounds.y;
+        let newWidth = startBounds.width;
+        let newHeight = startBounds.height;
+    
+        // Maintain aspect ratio if Shift key is pressed
+        const maintainAspectRatio = e.shiftKey;
+    
+        if (position.includes('w')) {
+          newX = startBounds.x + rotatedDx;
+          newWidth = startBounds.width - rotatedDx;
+        }
+        if (position.includes('e')) {
+          newWidth = startBounds.width + rotatedDx;
+        }
+        if (position.includes('n')) {
+          newY = startBounds.y + rotatedDy;
+          newHeight = startBounds.height - rotatedDy;
+        }
+        if (position.includes('s')) {
+          newHeight = startBounds.height + rotatedDy;
+        }
+    
+        if (maintainAspectRatio) {
+          const aspectRatio = startBounds.width / startBounds.height;
+          if (position.includes('w') || position.includes('e')) {
+            newHeight = newWidth / aspectRatio;
+          } else if (position.includes('n') || position.includes('s')) {
+            newWidth = newHeight * aspectRatio;
+          }
+        }
+    
+        // Handle negative dimensions
+        if (newWidth < 0) {
+          newX += newWidth;
+          newWidth = Math.abs(newWidth);
+        }
+        if (newHeight < 0) {
+          newY += newHeight;
+          newHeight = Math.abs(newHeight);
+        }
+    
+        // Ensure minimum size
+        if (newWidth >= 1 && newHeight >= 1) {
+          onResize(newX, newY, newWidth, newHeight);
+        }
+      } else if (type === 'rotate') {
+        // Calculate center point of the element
+        const centerX = startBounds.x + startBounds.width / 2;
+        const centerY = startBounds.y + startBounds.height / 2;
+    
+        // Calculate angles from center to start and current points
+        const startAngle = Math.atan2(
+          startPoint.y - (centerY * zoom),
+          startPoint.x - (centerX * zoom)
+        );
+        const currentAngle = Math.atan2(
+          e.clientY - (centerY * zoom),
+          e.clientX - (centerX * zoom)
+        );
+        
+        // Calculate rotation delta and add to starting angle
+        let deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
+        
+        // Snap to 15-degree intervals if Shift is held
+        if (e.shiftKey) {
+          deltaAngle = Math.round(deltaAngle / 15) * 15;
+        }
+        
+        const newAngle = ((startBounds.angle + deltaAngle) % 360 + 360) % 360;
+        onRotate(newAngle);
+      }
     };
 
-    const onMouseUp = (upEvent: MouseEvent) => {
-      upEvent.preventDefault();
-      upEvent.stopPropagation();
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setIsRotating(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const getResizeHandles = () => {
+    const positions = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+    return positions.map(pos => ({
+      position: pos,
+      cursor: `${pos}-resize`,
+      x: pos.includes('w') ? -HANDLE_SIZE / 2 :
+         pos.includes('e') ? normalizedBounds.width - HANDLE_SIZE / 2 :
+         normalizedBounds.width / 2 - HANDLE_SIZE / 2,
+      y: pos.includes('n') ? -HANDLE_SIZE / 2 :
+         pos.includes('s') ? normalizedBounds.height - HANDLE_SIZE / 2 :
+         normalizedBounds.height / 2 - HANDLE_SIZE / 2
+    }));
   };
 
   return (
-    <div
-      data-selection-box
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'absolute',
-        left: `${x - HANDLE_OFFSET}px`,
-        top: `${y - HANDLE_OFFSET}px`,
-        width: `${width + HANDLE_SIZE}px`,
-        height: `${height + HANDLE_SIZE}px`,
-        border: '1.5px solid #007BFF',
-        transform: `rotate(${angle}rad)`,
-        transformOrigin: 'center center',
-        pointerEvents: 'none',
-      }}
-    >
-      {/* Resize Handles */}
-      <div
-        data-selection-box
+
+      <div 
+        className="absolute pointer-events-none"
         style={{
-          position: 'absolute',
-          left: '-4px',
-          top: '-4px',
-          width: `${HANDLE_SIZE}px`,
-          height: `${HANDLE_SIZE}px`,
-          backgroundColor: '#007BFF',
-          border: '1.5px solid #007BFF',
-          cursor: 'nwse-resize',
-          pointerEvents: 'auto',
+          top: bounds.y + bounds.height / 2,
+          left: bounds.x + bounds.width / 2,
+          width: bounds.width,
+          height: bounds.height,
+          transform: `translate(-50%, -50%) rotate(${bounds.angle}deg)`,
+          transformOrigin: 'center',
         }}
-        onMouseDown={(e) => handleResize(e, 'top-left')}
-      />
-      <div
         data-selection-box
-        style={{
-          position: 'absolute',
-          right: '-4px',
-          top: '-4px',
-          width: `${HANDLE_SIZE}px`,
-          height: `${HANDLE_SIZE}px`,
-          border: '1.5px solid #007BFF',
-          backgroundColor: '#007BFF',
-          cursor: 'nesw-resize',
-          pointerEvents: 'auto',
-        }}
-        onMouseDown={(e) => handleResize(e, 'top-right')}
-      />
+      >    
+      <div className="absolute inset-0 border-2 border-blue-500 border-dashed" />
+      
+      {getResizeHandles().map((handle, index) => (
+        <div
+          key={index}
+          className="absolute bg-white border-2 border-blue-500 pointer-events-auto"
+          style={{
+            cursor: handle.cursor,
+            width: HANDLE_SIZE,
+            height: HANDLE_SIZE,
+            transform: `translate(${handle.x}px, ${handle.y}px)`,
+          }}
+          onMouseDown={(e) => handleMouseDown(e, 'resize', handle.position)}
+        />
+      ))}
+
       <div
-        data-selection-box
+        className="absolute left-1/2 bg-white border-2 border-blue-500 rounded-full pointer-events-auto"
         style={{
-          position: 'absolute',
-          left: '-4px',
-          bottom: '-4px',
-          width: `${HANDLE_SIZE}px`,
-          height: `${HANDLE_SIZE}px`,
-          border: '1.5px solid #007BFF',
-          backgroundColor: '#007BFF',
-          cursor: 'nesw-resize',
-          pointerEvents: 'auto',
+          width: HANDLE_SIZE,
+          height: HANDLE_SIZE,
+          transform: `translate(-${HANDLE_SIZE / 2}px, -${ROTATION_HANDLE_DISTANCE + HANDLE_SIZE}px)`,
+          cursor: 'grab',
         }}
-        onMouseDown={(e) => handleResize(e, 'bottom-left')}
-      />
-      <div
-        data-selection-box
-        style={{
-          position: 'absolute',
-          bottom: '-4px',
-          right: '-4px',
-          width: `${HANDLE_SIZE}px`,
-          height: `${HANDLE_SIZE}px`,
-          backgroundColor: '#007BFF',
-          border: '1.5px solid #007BFF',
-          cursor: 'nwse-resize',
-          pointerEvents: 'auto',
-        }}
-        onMouseDown={(e) => handleResize(e, 'bottom-right')}
+        onMouseDown={(e) => handleMouseDown(e, 'rotate')}
+        data-rotation-handle
       />
 
-      {/* Rotation Handle */}
       <div
-        data-rotation-handle
+        className="absolute left-1/2 w-0.5 bg-blue-500"
         style={{
-          position: 'absolute',
-          left: '50%',
-          top: `-${ROTATION_HANDLE_OFFSET}px`,
-          width: `${HANDLE_SIZE}px`,
-          height: `${HANDLE_SIZE}px`,
-          backgroundColor: 'white',
-          border: '1.5px solid #007BFF',
-          borderRadius: '50%',
-          cursor: 'grab',
+          height: ROTATION_HANDLE_DISTANCE,
           transform: 'translateX(-50%)',
-          pointerEvents: 'auto',
+          top: -ROTATION_HANDLE_DISTANCE,
         }}
-        onMouseDown={handleRotate}
       />
     </div>
   );
-};
-
-export default SelectionBox;
+}

@@ -74,7 +74,7 @@ private handleMouseDown = (event: MouseEvent) => {
     return;
   }
 
-  const point = this.camera.screenToWorld(event.clientX, event.clientY);
+  const point = this.camera.screenToWorld({ x: event.clientX, y: event.clientY });
 
   if (this.state.currentTool === "selection") {
     const clickedElement = this.elementManager.findElementAtPoint(point);
@@ -95,7 +95,7 @@ private handleMouseDown = (event: MouseEvent) => {
 
 private handleMouseMove = (event: MouseEvent) => {
   if (this.state.currentTool === "eraser" && this.isDrawing) {
-    const point = this.camera.screenToWorld(event.clientX, event.clientY);
+    const point = this.camera.screenToWorld({x:event.clientX, y:event.clientY});
     this.eraserManager.updateEraserPath(point);
     this.eraserManager.showEraserCursor(event.clientX, event.clientY);
   }
@@ -107,7 +107,7 @@ private handleMouseMove = (event: MouseEvent) => {
 
   if (!this.isDrawing) return;
 
-  const point = this.camera.screenToWorld(event.clientX, event.clientY);
+  const point = this.camera.screenToWorld({x:event.clientX, y:event.clientY});
 
   if (this.state.draggingElement) {
     this.handleDragging(point);
@@ -212,7 +212,8 @@ private handleMouseMove = (event: MouseEvent) => {
   }
 
   private handleDoubleClick = (event: MouseEvent) => {
-    const point = this.camera.screenToWorld(event.clientX, event.clientY);
+
+    const point = this.camera.screenToWorld({x:event.clientX, y: event.clientY});
 
     // Check if we clicked on an existing text element
     const element = this.elementManager.findElementAtPoint(point);

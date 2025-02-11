@@ -127,17 +127,23 @@ export class Camera {
     }
   };
 
-  public screenToWorld(screenX: number, screenY: number): Point {
+  public screenToWorld(point: Point): Point {
+    const zoom = this.getScale();
+    const viewport = this.getViewport();
+    
     return {
-      x: (screenX - this.viewport.offset.x) / this.viewport.zoom,
-      y: (screenY - this.viewport.offset.y) / this.viewport.zoom,
+      x: (point.x - viewport.offset.x) / zoom,
+      y: (point.y - viewport.offset.y) / zoom
     };
   }
-
-  public worldToScreen(worldX: number, worldY: number): Point {
+  
+  public worldToScreen(point: Point): Point {
+    const zoom = this.getScale();
+    const viewport = this.getViewport();
+    
     return {
-      x: worldX * this.viewport.zoom + this.viewport.offset.x,
-      y: worldY * this.viewport.zoom + this.viewport.offset.y,
+      x: (point.x * zoom) + viewport.offset.x,
+      y: (point.y * zoom) + viewport.offset.y
     };
   }
 

@@ -42,42 +42,47 @@ export class Renderer {
 
   // In Renderer.ts
   public render(elements: ExcalidrawElement[]) {
-    console.log("Rendering canvas...");
-    if (!this.isDirty) return; // Skip rendering if not dirty
-
+    if (!this.isDirty) return;
+  
     this.clear();
-
+  
     const { width, height } = this.ctx.canvas;
     this.ctx.fillStyle = "#ffffff";
     this.ctx.fillRect(0, 0, width, height);
     this.gridRenderer.drawGrid();
-
+  
     this.ctx.save();
     this.camera.applyTransform(this.ctx);
-
+  
+    // Render elements first
     for (const element of elements) {
+      console.log("In render",element);
       this.renderElement(element);
     }
-
-    if (this.selectionManager.getSelectedElements().length > 0) {
+  
+    // Render selection box only if selectionBounds is valid
+    const selectedElements = this.selectionManager.getSelectedElements();
+    if (selectedElements.length > 0) {
       const selectionBox = this.selectionManager.renderSelectionBox();
-      console.log("selection Box", selectionBox);
+      console.log("selectionBox", selectionBox);
       if (selectionBox) {
-        this.renderSelectionBox(selectionBox.screenBounds);
+        console.log("Rendering Selection Box:", selectionBox.screenBounds);
+        this.selectionManager.renderSelectionBox();
       }
     }
-
+  
     this.ctx.restore();
-
-    this.isDirty = false; // Reset the dirty flag
+  
+    this.isDirty = false;
   }
 
-  renderSelectionBox(box: { x: number; y: number; width: number; height: number }) {
+  renderSelectionBox(box: { x: number; y: number; width: number; height: number ,angle: number }) {
     this.ctx.save();
     this.ctx.strokeStyle = "blue";
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([4, 2]);
     this.ctx.strokeRect(box.x, box.y, box.width, box.height);
+    this.ctx.rotate(box.angle);
     this.ctx.restore();
   }  
   

@@ -60,7 +60,6 @@ export class Camera {
   }
 
   public handleMouseDown = (e: MouseEvent): void => {
-    console.log("tool in camera down",this.state?.currentTool);
     if (this.state?.currentTool !== "pan") {
       return; // Stop event propagation for non-pan tools
     }
@@ -93,7 +92,6 @@ export class Camera {
   };
 
   private handleMouseUp = (): void => {
-    console.log("tool in camera up",this.state?.currentTool);
     this.isDragging = false;
   };
 
@@ -127,23 +125,17 @@ export class Camera {
     }
   };
 
-  public screenToWorld(point: Point): Point {
-    const zoom = this.getScale();
-    const viewport = this.getViewport();
-    
+  worldToScreen(worldPoint: Point): Point {
     return {
-      x: (point.x - viewport.offset.x) / zoom,
-      y: (point.y - viewport.offset.y) / zoom
+      x: worldPoint.x * this.viewport.zoom + this.viewport.offset.x,
+      y: worldPoint.y * this.viewport.zoom + this.viewport.offset.y
     };
   }
   
-  public worldToScreen(point: Point): Point {
-    const zoom = this.getScale();
-    const viewport = this.getViewport();
-    
+  screenToWorld(screenPoint: Point): Point {
     return {
-      x: (point.x * zoom) + viewport.offset.x,
-      y: (point.y * zoom) + viewport.offset.y
+      x: (screenPoint.x - this.viewport.offset.x) / this.viewport.zoom,
+      y: (screenPoint.y - this.viewport.offset.y) / this.viewport.zoom
     };
   }
 
@@ -178,13 +170,8 @@ export class Camera {
 
   // In Camera.ts
 private triggerRender() {
-  console.log("tool in camera triggerRender",this.state?.currentTool);
-  console.log("renderer", this.renderer);
-  console.log("scene", this.scene);
   if (this.renderer && this.scene) {
-    console.log("Hello", this.renderer, this.scene)
     requestAnimationFrame(() => {
-      console.log("inside frame");
       this.renderer!.isDirty = true;
       this.renderer!.render(this.scene!.getElements());
     });

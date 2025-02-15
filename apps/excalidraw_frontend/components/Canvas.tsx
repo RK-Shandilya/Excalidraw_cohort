@@ -5,7 +5,6 @@ import Sidebar from "./Sidebar";
 import { ExcalidrawElement, Tool } from "@/draw/types/types";
 import { UndoRedoManager } from "@/draw/managers/UndoRedoManager";
 import SelectionBox from "./SelectionBox";
-import { update } from "lodash";
 
 export function Canvas({
   roomId,
@@ -21,6 +20,7 @@ export function Canvas({
   const [selectionBounds, setSelectionBounds] = useState<any>(null);
   const [camera, setCamera] = useState<any>(null);
   const [undoRedoManager] = useState(new UndoRedoManager());
+  
 
   const clearSelectionAndSidebar = () => {
     setSelectedElement(null);
@@ -62,7 +62,7 @@ export function Canvas({
 
         setSelectedElement(singleElement);
         if (element && gameRef.current) {
-          const bounds = gameRef.current.renderSelectionBox();
+          const bounds = gameRef.current.renderSelectionBox(singleElement);
           setSelectionBounds(bounds);
         } else {
           setSelectionBounds(null);
@@ -142,44 +142,32 @@ export function Canvas({
           zoom={camera?.getScale()}
           onResize={(x, y, width, height) => {
             if (gameRef.current && selectedElement) {
-              // Convert screen coordinates (x, y) to world coordinates
+              // Convert screen coordinates back to world coordinates
               const worldPoint = gameRef.current.getCamera().screenToWorld({ x, y });
-          
-              // Normalize the element's dimensions (handle negative width/height)
-              let normalizedX = worldPoint.x;
-              let normalizedY = worldPoint.y;
-              let normalizedWidth = width;
-              let normalizedHeight = height;
-          
-              if (width < 0) {
-                normalizedX += width; // Adjust x if width is negative
-                normalizedWidth = Math.abs(width);
-              }
-              if (height < 0) {
-                normalizedY += height; // Adjust y if height is negative
-                normalizedHeight = Math.abs(height);
-              }
-          
+              
+              // Calculate normalized dimensions
+              const scale = gameRef.current.getCamera().getScale();
+              const worldWidth = width / scale;
+              const worldHeight = height / scale;
+              
               const updatedElement = {
                 ...selectedElement,
-                x: normalizedX, // Normalized world coordinates
-                y: normalizedY, // Normalized world coordinates
-                width: normalizedWidth, // Normalized width
-                height: normalizedHeight, // Normalized height
+                x: worldPoint.x,
+                y: worldPoint.y,
+                width: worldWidth,
+                height: worldHeight,
               };
 
-              console.log("Updated Element:", updatedElement);
-          
-              // Update the element in the scene
+              
+              
+              // Update the element
               gameRef.current.scene.updateElement(updatedElement);
-          
-              // Recalculate selection bounds after resizing
-              const newBounds = gameRef.current.renderSelectionBox();
-              console.log("New Selection Bounds:", newBounds);
+              setSelectedElement(updatedElement);
+              
+              // Recalculate selection bounds
+              const newBounds = gameRef.current.renderSelectionBox(updatedElement);
               setSelectionBounds(newBounds);
-          
-              // Force a re-render
-              gameRef.current.render();
+
             }
           }}
           
@@ -196,15 +184,14 @@ export function Canvas({
                 x: centerX - selectedElement.width / 2,
                 y: centerY - selectedElement.height / 2,
               };
-          
-              console.log("Updated Element (Correct Rotation):", updatedElement);
-          
+        
               gameRef.current.scene.updateElement(updatedElement);
-              const newBounds = gameRef.current.renderSelectionBox();
+              setSelectedElement(updatedElement);
+
+              const newBounds = gameRef.current.renderSelectionBox(updatedElement);
               setSelectionBounds(newBounds);
-              gameRef.current.render();
             }
-          }}                   
+          }}              
         />
       )}
       <Topbar

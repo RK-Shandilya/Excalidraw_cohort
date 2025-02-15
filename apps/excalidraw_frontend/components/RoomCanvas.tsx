@@ -16,7 +16,6 @@ export function RoomCanvas({roomId}: {roomId: string}) {
                 type: "joinRoom",
                 roomId
             });
-            console.log("onopen data",data);
             ws.send(data)
         }
 

@@ -34,7 +34,7 @@ export class Game {
     this.scene = new Scene();
     this.socket = socket;
     this.roomId = roomId;
-
+  
     this.state = {
       currentTool: "selection",
       draggingElement: null,
@@ -45,45 +45,44 @@ export class Game {
       startBoundingBox: null,
       isDrawing: false
     };
-
-    // In Game.ts
-this.scene = new Scene(); // 1. Initialize Scene first
-
-this.elementManager = new ElementManager(this.scene, this.ERASER_SIZE); // 2. Initialize ElementManager
-
-this.stateManager = new AppStateManager();
-
-this.camera = new Camera(canvas, this.stateManager, this.scene); 
-
-this.selectionManager = new SelectionManager(
-  this.camera,
-  this.scene,
-  this.elementManager,
-  this.stateManager
-);
-
-this.renderManager = new Renderer(canvas, this.camera, this.selectionManager);
-
-this.drawingManager = new DrawingManager(
-  this.scene,
-  this.state,
-  this.camera,
-  this.renderManager
-);
-
-this.eraserManager = new EraserTool(
-  this.scene,
-  this.eraserPath,
-  this.eraserElement,
-  this.eraserCursor,
-  this.ERASER_SIZE
-);
-
+  
+    // Initialize managers
+    this.elementManager = new ElementManager(this.scene, this.ERASER_SIZE);
+    this.stateManager = new AppStateManager();
+    this.camera = new Camera(canvas, this.stateManager, this.scene);
+    this.selectionManager = new SelectionManager(
+      this.camera,
+      this.scene,
+      this.elementManager,
+      this.stateManager,
+    );
+    this.renderManager = new Renderer(canvas, this.camera, this.selectionManager);
+    this.drawingManager = new DrawingManager(
+      this.scene,
+      this.state,
+      this.camera,
+      this.renderManager
+    );
+    this.eraserManager = new EraserTool(
+      this.scene,
+      this.eraserPath,
+      this.eraserElement,
+      this.eraserCursor,
+      this.ERASER_SIZE
+    );
+  
+    // Set up the camera's renderer
     this.camera.setRenderer(this.renderManager);
-
+  
+    // Add scene update listener
+    this.scene.addUpdateListener((elements) => {
+      this.render();
+    });
+  
+    // Initialize event manager
     this.eventManager = new EventManager(
-      canvas, 
-      this.renderManager,  
+      canvas,
+      this.renderManager,
       this.scene,
       this.camera,
       this.state,
@@ -95,7 +94,8 @@ this.eraserManager = new EraserTool(
       this.socket,
       this.roomId
     );
-
+  
+    // Set up event listeners
     this.eventManager.setupEventListeners();
     this.eventManager.setupSceneListener();
   }
@@ -123,13 +123,12 @@ this.eraserManager = new EraserTool(
   }
   
   onSelectionChange(callback: any){
-    console.log("inside game.tsx")
     this.selectionManager.onSelectionChange(callback);
   }
 
-  public renderSelectionBox(){
-    const element = this.selectionManager.renderSelectionBox();
-    return element
+  public renderSelectionBox(element:ExcalidrawElement){
+    const element1 = this.selectionManager.renderSelectionBox(element);
+    return element1
   }
 
   onElementUpdate(callback: any) {

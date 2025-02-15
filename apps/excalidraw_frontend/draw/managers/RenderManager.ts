@@ -36,7 +36,6 @@ export class Renderer {
   }
 
   public markDirty() {
-    console.log("Canvas marked as dirty");
     this.isDirty = true;
   }
 
@@ -56,36 +55,18 @@ export class Renderer {
   
     // Render elements first
     for (const element of elements) {
-      console.log("In render",element);
       this.renderElement(element);
     }
   
     // Render selection box only if selectionBounds is valid
     const selectedElements = this.selectionManager.getSelectedElements();
     if (selectedElements.length > 0) {
-      const selectionBox = this.selectionManager.renderSelectionBox();
-      console.log("selectionBox", selectionBox);
-      if (selectionBox) {
-        console.log("Rendering Selection Box:", selectionBox.screenBounds);
-        this.selectionManager.renderSelectionBox();
-      }
+        this.selectionManager.renderSelectionBox(selectedElements[0]);
     }
   
     this.ctx.restore();
-  
     this.isDirty = false;
   }
-
-  renderSelectionBox(box: { x: number; y: number; width: number; height: number ,angle: number }) {
-    this.ctx.save();
-    this.ctx.strokeStyle = "blue";
-    this.ctx.lineWidth = 1;
-    this.ctx.setLineDash([4, 2]);
-    this.ctx.strokeRect(box.x, box.y, box.width, box.height);
-    this.ctx.rotate(box.angle);
-    this.ctx.restore();
-  }  
-  
 
   private renderElement(element: ExcalidrawElement) {
     if (element.isDeleted) return;

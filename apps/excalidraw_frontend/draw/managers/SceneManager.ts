@@ -16,7 +16,6 @@ export class Scene {
   updateElement(element: ExcalidrawElement) {
     this.hasUpdatesFlag = true;
     this.elements.set(element.id, { ...element });
-    console.log("element updated", this.elements.get(element.id))
     this.notifyListeners();
   }
 

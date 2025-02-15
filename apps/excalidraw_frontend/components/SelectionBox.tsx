@@ -1,5 +1,5 @@
 import { ExcalidrawElement } from '@/draw/types/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface SelectionBoxProps {
   element: ExcalidrawElement;
@@ -22,22 +22,13 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
   const [startBounds, setStartBounds] = useState(bounds);
 
   const HANDLE_SIZE = 8;
-  const ROTATION_HANDLE_DISTANCE = 20;
-
-  // Normalize bounds to account for zoom
-  const normalizedBounds = {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    angle: bounds.angle
-  };
+  const ROTATION_HANDLE_DISTANCE = 24;
 
   const handleMouseDown = (e: React.MouseEvent, type: 'resize' | 'rotate', position?: string) => {
     e.stopPropagation();
     const startPoint = { x: e.clientX, y: e.clientY };
     setStartPoint(startPoint);
-    setStartBounds({ ...normalizedBounds });
+    setStartBounds({ ...bounds });
 
     if (type === 'resize') {
       setIsResizing(true);
@@ -51,9 +42,12 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         const dy = (e.clientY - startPoint.y) / zoom;
         
         // Apply the element's rotation to the delta coordinates
-        const angle = (startBounds.angle * Math.PI) / 180;
-        const rotatedDx = dx * Math.cos(angle) + dy * Math.sin(angle);
-        const rotatedDy = -dx * Math.sin(angle) + dy * Math.cos(angle);
+        const angle = (-startBounds.angle * Math.PI) / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        
+        const rotatedDx = dx * cos - dy * sin;
+        const rotatedDy = dx * sin + dy * cos;
     
         // Calculate new bounds in world coordinates
         let newX = startBounds.x;
@@ -62,7 +56,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         let newHeight = startBounds.height;
     
         // Maintain aspect ratio if Shift key is pressed
-        const maintainAspectRatio = e.shiftKey;
+        const aspectRatio = e.shiftKey ? startBounds.width / startBounds.height : null;
     
         if (position.includes('w')) {
           newX = startBounds.x + rotatedDx;
@@ -79,16 +73,14 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           newHeight = startBounds.height + rotatedDy;
         }
     
-        if (maintainAspectRatio) {
-          const aspectRatio = startBounds.width / startBounds.height;
+        if (aspectRatio !== null) {
           if (position.includes('w') || position.includes('e')) {
             newHeight = newWidth / aspectRatio;
-          } else if (position.includes('n') || position.includes('s')) {
+          } else {
             newWidth = newHeight * aspectRatio;
           }
         }
-    
-        // Handle negative dimensions
+
         if (newWidth < 0) {
           newX += newWidth;
           newWidth = Math.abs(newWidth);
@@ -104,28 +96,31 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         }
       } else if (type === 'rotate') {
         // Calculate center point of the element
-        const centerX = startBounds.x + startBounds.width / 2;
-        const centerY = startBounds.y + startBounds.height / 2;
+        const center = {
+          x: startBounds.x + startBounds.width / 2,
+          y: startBounds.y + startBounds.height / 2
+        };
     
         // Calculate angles from center to start and current points
         const startAngle = Math.atan2(
-          startPoint.y - (centerY * zoom),
-          startPoint.x - (centerX * zoom)
+          startPoint.y - center.y * zoom,
+          startPoint.x - center.x * zoom
         );
         const currentAngle = Math.atan2(
-          e.clientY - (centerY * zoom),
-          e.clientX - (centerX * zoom)
+          e.clientY - center.y * zoom,
+          e.clientX - center.x * zoom
         );
         
         // Calculate rotation delta and add to starting angle
-        let deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
+        let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
+        let newAngle = (startBounds.angle + angleDelta) % 360;
         
         // Snap to 15-degree intervals if Shift is held
         if (e.shiftKey) {
-          deltaAngle = Math.round(deltaAngle / 15) * 15;
+          newAngle = Math.round(newAngle / 15) * 15;
         }
         
-        const newAngle = ((startBounds.angle + deltaAngle) % 360 + 360) % 360;
+        if (newAngle < 0) newAngle += 360;
         onRotate(newAngle);
       }
     };
@@ -141,34 +136,59 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
     window.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Get cursor style for resize handles based on rotation
   const getResizeHandles = () => {
     const positions = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-    return positions.map(pos => ({
-      position: pos,
-      cursor: `${pos}-resize`,
-      x: pos.includes('w') ? -HANDLE_SIZE / 2 :
-         pos.includes('e') ? normalizedBounds.width - HANDLE_SIZE / 2 :
-         normalizedBounds.width / 2 - HANDLE_SIZE / 2,
-      y: pos.includes('n') ? -HANDLE_SIZE / 2 :
-         pos.includes('s') ? normalizedBounds.height - HANDLE_SIZE / 2 :
-         normalizedBounds.height / 2 - HANDLE_SIZE / 2
-    }));
+    const angle = bounds.angle;
+    
+    return positions.map(pos => {
+      let cursor: string | undefined = pos + '-resize';
+      const rotatedAngle = (angle + 180) % 180;
+      
+      if (rotatedAngle > 22.5 && rotatedAngle <= 67.5) {
+        cursor = {
+          'nw': 'n-resize', 'n': 'ne-resize', 'ne': 'e-resize',
+          'e': 'se-resize', 'se': 's-resize', 'sw': 'w-resize',
+          'w': 'nw-resize', 's': 'sw-resize'
+        }[pos];
+      } else if (rotatedAngle > 67.5 && rotatedAngle <= 112.5) {
+        cursor = {
+          'nw': 'ne-resize', 'n': 'e-resize', 'ne': 'se-resize',
+          'e': 's-resize', 'se': 'sw-resize', 's': 'w-resize',
+          'sw': 'nw-resize', 'w': 'n-resize'
+        }[pos];
+      } else if (rotatedAngle > 112.5 && rotatedAngle <= 157.5) {
+        cursor = {
+          'nw': 'e-resize', 'n': 'se-resize', 'ne': 's-resize',
+          'e': 'sw-resize', 'se': 'w-resize', 's': 'nw-resize',
+          'sw': 'n-resize', 'w': 'ne-resize'
+        }[pos];
+      }
+
+      return {
+        position: pos,
+        cursor,
+        x: pos.includes('w') ? -HANDLE_SIZE/2 :
+           pos.includes('e') ? bounds.width - HANDLE_SIZE/2 :
+           bounds.width/2 - HANDLE_SIZE/2,
+        y: pos.includes('n') ? -HANDLE_SIZE/2 :
+           pos.includes('s') ? bounds.height - HANDLE_SIZE/2 :
+           bounds.height/2 - HANDLE_SIZE/2
+      };
+    });
   };
 
   return (
-
-      <div 
-        className="absolute pointer-events-none"
-        style={{
-          top: bounds.y + bounds.height / 2,
-          left: bounds.x + bounds.width / 2,
-          width: bounds.width,
-          height: bounds.height,
-          transform: `translate(-50%, -50%) rotate(${bounds.angle}deg)`,
-          transformOrigin: 'center',
-        }}
-        data-selection-box
-      >    
+    <div 
+      className="absolute pointer-events-none"
+      style={{
+        transform: `translate(${bounds.x}px, ${bounds.y}px) rotate(${bounds.angle}deg)`,
+        width: bounds.width,
+        height: bounds.height,
+        transformOrigin: 'center center'
+      }}
+      data-selection-box
+    >
       <div className="absolute inset-0 border-2 border-blue-500 border-dashed" />
       
       {getResizeHandles().map((handle, index) => (
@@ -190,7 +210,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         style={{
           width: HANDLE_SIZE,
           height: HANDLE_SIZE,
-          transform: `translate(-${HANDLE_SIZE / 2}px, -${ROTATION_HANDLE_DISTANCE + HANDLE_SIZE}px)`,
+          transform: `translate(-${HANDLE_SIZE/2}px, -${ROTATION_HANDLE_DISTANCE + HANDLE_SIZE}px)`,
           cursor: 'grab',
         }}
         onMouseDown={(e) => handleMouseDown(e, 'rotate')}

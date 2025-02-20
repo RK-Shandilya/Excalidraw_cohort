@@ -38,6 +38,70 @@ export class ElementManager {
     };
   }
 
+  // In ElementManager.ts
+public getTightBounds(element: ExcalidrawElement) {
+  const { x, y, width, height, angle } = element;
+
+  // Get the four corners of the element in its local space (before rotation)
+  const corners: Point[] = [
+    { x, y }, // Top-left
+    { x: x + width, y }, // Top-right
+    { x: x + width, y: y + height }, // Bottom-right
+    { x, y: y + height }, // Bottom-left
+  ];
+
+  // Rotate the corners around the element's center
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const rotatedCorners = corners.map((corner) =>
+    this.rotatePoint(corner, { x: centerX, y: centerY }, angle)
+  );
+
+  // Find the min and max x and y values to determine the tight bounds
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  rotatedCorners.forEach((corner) => {
+    if (corner.x < minX) minX = corner.x;
+    if (corner.y < minY) minY = corner.y;
+    if (corner.x > maxX) maxX = corner.x;
+    if (corner.y > maxY) maxY = corner.y;
+  });
+
+  // Calculate the width and height of the tight bounds
+  const width1 = maxX - minX;
+  const height1 = maxY - minY;
+
+  return {
+    x: minX,
+    y: minY,
+    width1,
+    height1,
+    angle,
+  };
+}
+
+private rotatePoint(point: Point, center: Point, angle: number): Point {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  // Translate point to origin
+  const translatedX = point.x - center.x;
+  const translatedY = point.y - center.y;
+
+  // Rotate point
+  const rotatedX = translatedX * cos - translatedY * sin;
+  const rotatedY = translatedX * sin + translatedY * cos;
+
+  // Translate point back
+  return {
+    x: rotatedX + center.x,
+    y: rotatedY + center.y,
+  };
+}
+
   isPointNearElement(point: Point, element: ExcalidrawElement): boolean {
     const tolerance = this.ERASER_SIZE / 2;
     switch (element.type) {

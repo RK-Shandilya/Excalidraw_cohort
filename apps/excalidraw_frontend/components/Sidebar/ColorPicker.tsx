@@ -24,7 +24,10 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ selectedElement, onCha
           key={color}
           color={color}
           isSelected={selectedElement?.strokeColor === color}
-          onClick={() => onChange(color)}
+          onClick={() => {
+            console.log("Setting stroke color:", color);
+            onChange(color)
+          }}
         />
       ))}
     </div>

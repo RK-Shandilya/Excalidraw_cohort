@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useCallback, memo } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
+import { ChevronLeft, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { ExcalidrawElement, Tool } from '@/draw/types/types';
-import { ColorButton, PropertyButton, PropertySection } from './SidebarComponents';
 
-export interface SidebarProps {
+interface SidebarProps {
   selectedElement: ExcalidrawElement | null;
   selectedTool: Tool;
   setStrokeColor: (color: string) => void;
@@ -17,7 +17,7 @@ export interface SidebarProps {
   onClose: () => void;
 }
 
-const Sidebar = memo(({
+const Sidebar = ({
   selectedElement,
   selectedTool,
   setStrokeColor,
@@ -35,18 +35,10 @@ const Sidebar = memo(({
   const isShapeElement = selectedElement?.type === 'rect' || selectedElement?.type === 'circle';
   const isLineElement = selectedElement?.type === 'line' || selectedElement?.type === 'arrow';
   
-  // Show sidebar when either an element is selected or a drawing tool is active
   const isVisible = selectedElement !== null || 
     ['rect', 'circle', 'line', 'arrow', 'text', 'pencil'].includes(selectedTool);
 
-  // Determine which sections to show based on selected tool or element
-  const showStrokeSection = isShapeElement || isLineElement || 
-    ['rect', 'circle', 'line', 'arrow', 'pencil'].includes(selectedTool);
-  const showBackgroundSection = isShapeElement || ['rect', 'circle'].includes(selectedTool);
-  const showTextSection = isTextElement || selectedTool === 'text';
-
   const handleClickOutside = useCallback((event: MouseEvent) => {
-    // Check if the click is on the canvas or selection box
     const target = event.target as HTMLElement;
     const isCanvasClick = target.tagName.toLowerCase() === 'canvas';
     const isSelectionBoxClick = target.closest('[data-selection-box]') !== null;
@@ -55,8 +47,8 @@ const Sidebar = memo(({
       sidebarRef.current && 
       !sidebarRef.current.contains(event.target as Node) &&
       selectedElement !== null &&
-      !isSelectionBoxClick && // Don't close when clicking selection box
-      !isCanvasClick // Don't close when clicking canvas directly
+      !isSelectionBoxClick &&
+      !isCanvasClick
     ) {
       onClose();
     }
@@ -74,145 +66,195 @@ const Sidebar = memo(({
   return (
     <div 
       ref={sidebarRef}
-      className={`fixed right-4 top-20 w-72 bg-slate-800 rounded-xl p-4 
-        text-white space-y-6 shadow-lg z-50 transition-all duration-200 ease-in-out
-        ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'}`}
+      className="fixed right-0 top-0 h-full w-72 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-50 sidebar"
     >
-      <h1 className="text-lg font-bold">
-        {selectedElement ? 'Element Properties' : 'Tool Properties'}
-      </h1>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <h2 className="text-lg font-medium text-gray-900">
+          {selectedElement ? 'Element Style' : 'Style'}
+        </h2>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-md hover:bg-gray-100"
+        >
+          <ChevronLeft className="w-5 h-5 text-gray-500" />
+        </button>
+      </div>
 
-      {showStrokeSection && (
-        <PropertySection title="Stroke" show={true}>
-          <div className="flex flex-wrap gap-2">
-            {['#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'].map((color) => (
-              <ColorButton
-                key={color}
-                color={color}
-                isSelected={selectedElement?.strokeColor === color}
-                onClick={() => setStrokeColor(color)}
-              />
-            ))}
-          </div>
-        </PropertySection>
-      )}
-
-      {showBackgroundSection && (
-        <PropertySection title="Background" show={true}>
-          <div className="flex flex-wrap gap-2">
-            {['transparent', '#ffcccc', '#ccffcc', '#ccccff', '#ffffcc', '#ffccff'].map((color) => (
-              <ColorButton
-                key={color}
-                color={color}
-                isSelected={selectedElement?.backgroundColor === color}
-                onClick={() => setFillColor(color)}
-              />
-            ))}
-          </div>
-        </PropertySection>
-      )}
-
-      {showStrokeSection && (
-        <PropertySection title="Stroke width" show={true}>
-          <div className="flex gap-2">
-            {[2, 4, 6].map((width) => (
-              <PropertyButton
-                key={width}
-                isSelected={selectedElement?.strokeWidth === width}
-                onClick={() => setStrokeWidth(width)}
-              >
-                <div className="w-8" style={{ height: `${width}px`, backgroundColor: 'white' }} />
-              </PropertyButton>
-            ))}
-          </div>
-        </PropertySection>
-      )}
-
-      {showStrokeSection && (
-        <PropertySection title="Stroke style" show={true}>
-          <div className="flex gap-2">
-            {['solid', 'dashed', 'dotted'].map((style) => (
-              <PropertyButton
-                key={style}
-                isSelected={selectedElement?.strokeStyle === style}
-                onClick={() => setStrokeStyle(style)}
-              >
-                <div className="w-8 border-t-2 border-white" style={{ borderStyle: style }} />
-              </PropertyButton>
-            ))}
-          </div>
-        </PropertySection>
-      )}
-
-      <PropertySection title="Opacity" show={isVisible}>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={(selectedElement?.opacity ?? 1) * 100}
-          onChange={(e) => setOpacity(Number(e.target.value) / 100)}
-          className="w-full accent-blue-500"
-        />
-      </PropertySection>
-
-      {showTextSection && (
-        <>
-          <PropertySection title="Font Size" show={true}>
-            <select
-              value={selectedElement?.fontSize ?? 20}
-              onChange={(e) => setFontSize(Number(e.target.value))}
-              className="w-full bg-gray-700 text-white rounded-md p-2"
-            >
-              {[16, 20, 24, 28, 32, 36, 40].map((size) => (
-                <option key={size} value={size}>
-                  {size}px
-                </option>
-              ))}
-            </select>
-          </PropertySection>
-
-          <PropertySection title="Font Family" show={true}>
-            <select
-              value={selectedElement?.fontFamily ?? 'Arial'}
-              onChange={(e) => setFontFamily(e.target.value)}
-              className="w-full bg-gray-700 text-white rounded-md p-2"
-            >
-              {['Arial', 'Helvetica', 'Times New Roman', 'Courier New'].map((family) => (
-                <option key={family} value={family}>
-                  {family}
-                </option>
-              ))}
-            </select>
-          </PropertySection>
-
-          <PropertySection title="Text Align" show={true}>
-            <div className="flex gap-2">
-              {['left', 'center', 'right'].map((align) => (
-                <PropertyButton
-                  key={align}
-                  isSelected={selectedElement?.textAlign === align}
-                  onClick={() => setTextAlign(align as 'left' | 'center' | 'right')}
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path
-                      d={
-                        align === 'left'
-                          ? 'M3 6h18M3 12h12M3 18h15'
-                          : align === 'center'
-                          ? 'M3 6h18M6 12h12M4 18h16'
-                          : 'M3 6h18M9 12h12M6 18h15'
-                      }
-                      strokeWidth="2"
-                    />
-                  </svg>
-                </PropertyButton>
+      <div className="p-4 space-y-6">
+        {/* Stroke Color */}
+        {(isShapeElement || isLineElement || ['rect', 'circle', 'line', 'arrow', 'pencil'].includes(selectedTool)) && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Stroke</label>
+            <div className="flex flex-wrap gap-2">
+              {['#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#f08c00', '#9c36b5'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    setStrokeColor(color)
+                  }}
+                  className={`w-8 h-8 rounded-lg border-2 ${
+                    selectedElement?.strokeColor === color 
+                      ? 'border-blue-500' 
+                      : 'border-gray-200'
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
               ))}
             </div>
-          </PropertySection>
-        </>
-      )}
+          </div>
+        )}
+
+        {/* Background Color */}
+        {(isShapeElement || ['rect', 'circle'].includes(selectedTool)) && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Background</label>
+            <div className="flex flex-wrap gap-2">
+              {['transparent', '#ffc9c9', '#b2f2bb', '#a5d8ff', '#ffec99', '#eebefa'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => setFillColor(color)}
+                  className={`w-8 h-8 rounded-lg border-2 ${
+                    selectedElement?.backgroundColor === color 
+                      ? 'border-blue-500' 
+                      : 'border-gray-200'
+                  }`}
+                  style={{ 
+                    backgroundColor: color,
+                    backgroundImage: color === 'transparent' 
+                      ? 'linear-gradient(45deg, #efefef 25%, transparent 25%), linear-gradient(-45deg, #efefef 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #efefef 75%), linear-gradient(-45deg, transparent 75%, #efefef 75%)'
+                      : 'none',
+                    backgroundSize: '8px 8px',
+                    backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px'
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stroke Width */}
+        {(isShapeElement || isLineElement || ['rect', 'circle', 'line', 'arrow', 'pencil'].includes(selectedTool)) && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Stroke width</label>
+            <div className="flex gap-2">
+              {[1, 2, 4, 8].map(width => (
+                <button
+                  key={width}
+                  onClick={() => setStrokeWidth(width)}
+                  className={`flex items-center justify-center w-12 h-8 rounded-lg ${
+                    selectedElement?.strokeWidth === width
+                      ? 'bg-blue-100 border-2 border-blue-500'
+                      : 'bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <div 
+                    className="bg-gray-900 rounded-full"
+                    style={{ height: `${width}px`, width: '24px' }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stroke Style */}
+        {(isShapeElement || isLineElement || ['rect', 'circle', 'line', 'arrow'].includes(selectedTool)) && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Stroke style</label>
+            <div className="flex gap-2">
+              {['solid', 'dashed', 'dotted'].map(style => (
+                <button
+                  key={style}
+                  onClick={() => setStrokeStyle(style)}
+                  className={`w-12 h-8 rounded-lg flex items-center justify-center ${
+                    selectedElement?.strokeStyle === style
+                      ? 'bg-blue-100 border-2 border-blue-500'
+                      : 'bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <div 
+                    className="w-8 border-t-2 border-gray-900"
+                    style={{ borderStyle: style }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Text Properties */}
+        {(isTextElement || selectedTool === 'text') && (
+          <>
+            {/* Font Family */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Font family</label>
+              <select
+                value={selectedElement?.fontFamily ?? 'Arial'}
+                onChange={(e) => setFontFamily(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 py-2 px-3"
+              >
+                {['Arial', 'Helvetica', 'Times New Roman', 'Courier New'].map(family => (
+                  <option key={family} value={family}>{family}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Font Size */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Font size</label>
+              <select
+                value={selectedElement?.fontSize ?? 20}
+                onChange={(e) => setFontSize(Number(e.target.value))}
+                className="w-full rounded-lg border border-gray-200 py-2 px-3"
+              >
+                {[16, 20, 24, 28, 32, 36, 40].map(size => (
+                  <option key={size} value={size}>{size}px</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Text Alignment */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Text align</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'left', icon: AlignLeft },
+                  { value: 'center', icon: AlignCenter },
+                  { value: 'right', icon: AlignRight }
+                ].map(({ value, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setTextAlign(value as 'left' | 'center' | 'right')}
+                    className={`p-2 rounded-lg ${
+                      selectedElement?.textAlign === value
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Opacity Slider */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Opacity</label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={(selectedElement?.opacity ?? 1) * 100}
+            onChange={(e) => setOpacity(Number(e.target.value) / 100)}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+        </div>
+      </div>
     </div>
   );
-});
+};
 
 export default Sidebar;

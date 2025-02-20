@@ -182,7 +182,7 @@ export class Game {
   }
 
   private updateSelectedElements(props: Partial<ExcalidrawElement>) {
-    this.state.selectedElements.forEach((element) => {
+    this.stateManager.getState().selectedElements.forEach((element) => {
       const updatedElement = { ...element, ...props };
       this.scene.updateElement(updatedElement);
     });
@@ -190,7 +190,6 @@ export class Game {
   }
 
   public setPanning(isPanning: boolean) {
-
     this.stateManager.setPanning(isPanning);
   }
 }

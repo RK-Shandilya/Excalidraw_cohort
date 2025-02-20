@@ -58,11 +58,11 @@ export class Renderer {
       this.renderElement(element);
     }
   
-    // Render selection box only if selectionBounds is valid
-    const selectedElements = this.selectionManager.getSelectedElements();
-    if (selectedElements.length > 0) {
-        this.selectionManager.renderSelectionBox(selectedElements[0]);
-    }
+    // // Render selection box only if selectionBounds is valid
+    // const selectedElements = this.selectionManager.getSelectedElements();
+    // if (selectedElements.length > 0) {
+    //     this.selectionManager.renderSelectionBox(selectedElements[0]);
+    // }
   
     this.ctx.restore();
     this.isDirty = false;

@@ -42,13 +42,13 @@ export class SelectionManager {
       newSelection = [element];
     }
 
-    this.stateManager.setSelectedElements(newSelection);
+    this.setSelectedElements(newSelection);
     this.notifySelectionChange();
     return element;
   }
 
   public clearSelection() {
-    this.stateManager.setSelectedElements([]); // Clear selection via AppStateManager
+    this.setSelectedElements([]); // Clear selection via AppStateManager
     this.notifySelectionChange();
   }
 

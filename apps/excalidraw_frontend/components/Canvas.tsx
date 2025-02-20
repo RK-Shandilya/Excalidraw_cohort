@@ -53,7 +53,7 @@ export function Canvas({
 
       const game = new Game(canvas, roomId, socket);
       gameRef.current = game;
-      const camera = game.getCamera();
+      const camera = gameRef.current.getCamera();
       setCamera(camera); // Store the camera in state
       game.render();
 
@@ -95,7 +95,7 @@ export function Canvas({
       const handleCanvasClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         const isCanvasClick = target.tagName.toLowerCase() === "canvas";
-        if (isCanvasClick && !game.isClickingElement(e)) {
+        if (isCanvasClick && !gameRef.current?.isClickingElement(e)) {
           clearSelectionAndSidebar();
         }
       };
@@ -106,14 +106,12 @@ export function Canvas({
         const isRotationHandle = target.closest("[data-rotation-handle]") !== null;
         const isSelectionBox = target.closest("[data-selection-box]") !== null;
         const isSidebar = target.closest(".sidebar") !== null;
-        const isTopbar = target.closest(".topbar") !== null;
 
         if (
           !isCanvasOrChild &&
           !isRotationHandle &&
           !isSelectionBox &&
-          !isSidebar &&
-          !isTopbar
+          !isSidebar
         ) {
           clearSelectionAndSidebar();
         }
@@ -158,8 +156,6 @@ export function Canvas({
                 height: worldHeight,
               };
 
-              
-              
               // Update the element
               gameRef.current.scene.updateElement(updatedElement);
               setSelectedElement(updatedElement);
@@ -212,7 +208,7 @@ export function Canvas({
       />
       <Sidebar
         selectedTool={selectedTool}
-        selectedElement={selectedElement}
+        selectedElement={selectedElement ? selectedElement : null}
         onClose={clearSelectionAndSidebar}
         setFontSize={(size) => gameRef.current?.setFontSize(size)}
         setFontFamily={(family) => gameRef.current?.setFontFamily(family)}

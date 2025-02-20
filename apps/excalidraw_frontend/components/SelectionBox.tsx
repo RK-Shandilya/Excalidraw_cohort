@@ -40,12 +40,13 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
       if (type === 'resize' && position) {
         const dx = (e.clientX - startPoint.x) / zoom;
         const dy = (e.clientY - startPoint.y) / zoom;
-        
-        // Apply the element's rotation to the delta coordinates
-        const angle = (-startBounds.angle * Math.PI) / 180;
+    
+        // Convert the delta to the element's local coordinate system
+        const angle = (-startBounds.angle * Math.PI) / 180; // Convert angle to radians
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        
+    
+        // Rotate the delta (dx, dy) to align with the element's rotated axes
         const rotatedDx = dx * cos - dy * sin;
         const rotatedDy = dx * sin + dy * cos;
     
@@ -58,6 +59,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         // Maintain aspect ratio if Shift key is pressed
         const aspectRatio = e.shiftKey ? startBounds.width / startBounds.height : null;
     
+        // Adjust the bounds based on the resizing handle position
         if (position.includes('w')) {
           newX = startBounds.x + rotatedDx;
           newWidth = startBounds.width - rotatedDx;
@@ -73,6 +75,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           newHeight = startBounds.height + rotatedDy;
         }
     
+        // Maintain aspect ratio if Shift is pressed
         if (aspectRatio !== null) {
           if (position.includes('w') || position.includes('e')) {
             newHeight = newWidth / aspectRatio;
@@ -80,7 +83,8 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
             newWidth = newHeight * aspectRatio;
           }
         }
-
+    
+        // Prevent negative dimensions
         if (newWidth < 0) {
           newX += newWidth;
           newWidth = Math.abs(newWidth);
@@ -110,16 +114,16 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           e.clientY - center.y * zoom,
           e.clientX - center.x * zoom
         );
-        
+    
         // Calculate rotation delta and add to starting angle
         let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
         let newAngle = (startBounds.angle + angleDelta) % 360;
-        
+    
         // Snap to 15-degree intervals if Shift is held
         if (e.shiftKey) {
           newAngle = Math.round(newAngle / 15) * 15;
         }
-        
+    
         if (newAngle < 0) newAngle += 360;
         onRotate(newAngle);
       }

@@ -16,7 +16,7 @@ export class Game {
 
   private isPanning: boolean = false;
   private panOffset = {x:0 , y:0};
-  private panStart = {x:0, y:0};
+  private panStart = {x:0, y:0}; 
   
   private isErasing: boolean = false;
   private selectedElementIndex: number | null = null;
@@ -125,6 +125,8 @@ export class Game {
   }
 
   private handleMouseDown = (event: MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
     this.isDrawing = true;
 
     if (this.currentTool == "pan") {
@@ -143,8 +145,6 @@ export class Game {
     ) {
       this.startX = canvasX;
       this.startY = canvasY;
-      console.log(this.startX, this.startY);
-      console.log("Drawing started");
     } else if (this.currentTool == "eraser") {
         this.isErasing = true;
         this.createEraserCursor(canvasX, canvasY);
@@ -190,8 +190,6 @@ export class Game {
       }
     });
     if(elementsToRemove.length> 0) {
-        console.log("elements: ", this.elements);
-        console.log("elementsToRemove", elementsToRemove);
         for (let i = elementsToRemove.length - 1; i >= 0; i--) {
             this.elements.splice(elementsToRemove[i]!, 1);
         }
@@ -364,14 +362,16 @@ export class Game {
   }
 
   private handleMouseUp = (event: MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
     if (!this.isDrawing) return;
 
     if(this.currentTool == "pan" && this.isPanning) {
         this.isPanning = false;
         document.body.style.cursor = "default";
         this.isDrawing = false;
+        console.log("panning offset", this.panOffset);
         this.redraw();
-        console.log("panning stopped");
         return;
     }
     
@@ -440,8 +440,6 @@ export class Game {
     }
     if(isValidDrag) {
         if(shape) {
-            console.log(this.elements);
-            console.log("drawing stopped");
             this.elements.push(shape);
             this.socket.send(
                 JSON.stringify({
@@ -457,7 +455,8 @@ export class Game {
   };
 
   private handleMouseMove = (event: MouseEvent) => {
-
+    event.stopPropagation();
+    event.preventDefault();
     if (!this.isDrawing) return;
     if (!this.ctx) return;
 
@@ -474,14 +473,10 @@ export class Game {
         this.redraw();
         return;
     }
-
-    console.log(this.startX, this.startY);
+    
     const result = this.screenToCanvas(event.clientX, event.clientY);
     const canvasX = result.clientX;
     const canvasY = result.clientY;
-    // console.log(this.panOffset.x, this.panOffset.y);
-    // console.log(event.clientX, event.clientX);
-    // console.log(result.clientX, result.clientY);
     
     this.redraw();
     if (this.currentTool == "line") {
@@ -491,10 +486,6 @@ export class Game {
       this.ctx.strokeStyle = "#fff";
       this.ctx.stroke();
     } else if (this.currentTool == "rect") {
-        console.log("Movement Started");
-        console.log(this.panOffset.x, this.panOffset.y);
-        console.log(result.clientX, result.clientY);
-        console.log("Movement ended");
       this.ctx?.strokeRect(
         this.startX,
         this.startY,
@@ -558,16 +549,18 @@ export class Game {
     }
   };
 
+  
+
   private redraw = () => {
     if (!this.ctx || !this.canvas) return;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.strokeStyle = "#fff";
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([]);
 
-    this.ctx.save();
-    this.ctx.translate(this.panOffset.x, this.panOffset.y);
+    this.ctx.setTransform(1,0,0,1,this.panOffset.x, this.panOffset.y);
 
     this.elements.forEach((element: Shape) => {
       switch (element.type) {
@@ -642,15 +635,14 @@ export class Game {
     if (this.selectedElementIndex !== null && this.elements[this.selectedElementIndex]) {
         this.drawSelectionBoundary(this.elements[this.selectedElementIndex]!);   
     }
-    this.ctx.restore();
   };
 
   private screenToCanvas(screenX: number, screenY: number): {clientX: number, clientY: number} {
-    console.log("inside screenToCanvas", screenX, screenY);
     const rect = this.canvas.getBoundingClientRect();
+    console.log("starting coord", screenX, screenY);
     return {
-        clientX: (screenX - rect.left) - this.panOffset.x,
-        clientY: (screenY - rect.top) - this.panOffset.y
+        clientX: ((screenX - rect.left) - this.panOffset.x),
+        clientY: ((screenY - rect.top) - this.panOffset.y)
     };
   }
 

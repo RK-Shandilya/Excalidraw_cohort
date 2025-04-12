@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 const SignUp = () => {
     const router = useRouter();
     const [formData, setFormData] = React.useState({
-        username: '',
+        name: '',
         email: '',
         password: '',
         confirmPassword: ''
@@ -20,6 +20,7 @@ const SignUp = () => {
                 {
                     ...formData
                 })
+                console.log(res);
             router.push('/signin');
         } catch(e) {
             console.log(e);

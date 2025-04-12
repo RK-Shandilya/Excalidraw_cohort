@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Game } from "@/draw/Game";
 import { Topbar } from "./Topbar";
-import Sidebar from "./Sidebar";
-import { ExcalidrawElement, Tool } from "@/draw/types/types";
-import { UndoRedoManager } from "@/draw/managers/UndoRedoManager";
-import SelectionBox from "./SelectionBox";
+// import Sidebar from "./Sidebar";
+import {  Tool } from "@/draw/types/types";
+// import { UndoRedoManager } from "@/draw/managers/UndoRedoManager";
+// import SelectionBox from "./SelectionBox";
 
 export function Canvas({
   roomId,
@@ -16,124 +16,107 @@ export function Canvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const [selectedTool, setSelectedTool] = useState<Tool>("selection");
-  const [selectedElement, setSelectedElement] = useState<ExcalidrawElement | null>(null);
-  const [selectionBounds, setSelectionBounds] = useState<any>(null);
-  const [camera, setCamera] = useState<any>(null);
-  const [undoRedoManager] = useState(new UndoRedoManager());
+  // const [selectedElement, setSelectedElement] = useState<ExcalidrawElement | null>(null);
+  // const [selectionBounds, setSelectionBounds] = useState<any>(null);
+  // const [camera, setCamera] = useState<any>(null);
+  // const [undoRedoManager] = useState(new UndoRedoManager());
   
 
-  const clearSelectionAndSidebar = () => {
-    setSelectedElement(null);
-    setSelectionBounds(null);
-    gameRef.current?.clearSelection();
-    if (selectedTool !== "selection" && selectedTool !== "pan") {
-      setSelectedTool("selection");
-      gameRef.current?.setTool("selection");
-    }
-  };
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
-        gameRef.current?.render();
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  // const clearSelectionAndSidebar = () => {
+  //   setSelectedElement(null);
+  //   setSelectionBounds(null);
+  //   gameRef.current?.clearSelection();
+  //   if (selectedTool !== "selection" && selectedTool !== "pan") {
+  //     setSelectedTool("selection");
+  //     gameRef.current?.setTool("selection");
+  //   }
+  // };
 
   useEffect(() => {
     if (canvasRef.current) {
-      const canvas = canvasRef.current;
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-
-      const game = new Game(canvas, roomId, socket);
+      const game = new Game(canvasRef.current, roomId, socket);
       gameRef.current = game;
-      const camera = gameRef.current.getCamera();
-      setCamera(camera); // Store the camera in state
+      // const camera = gameRef.current.getCamera();
+      // setCamera(camera); // Store the camera in state
       game.render();
 
-      game.onSelectionChange((element: ExcalidrawElement) => {
-        const singleElement = Array.isArray(element) ? element[0] : element;
+    //   game.onSelectionChange((element: ExcalidrawElement) => {
+    //     const singleElement = Array.isArray(element) ? element[0] : element;
 
-        setSelectedElement(singleElement);
-        if (element && gameRef.current) {
-          const bounds = gameRef.current.renderSelectionBox(singleElement);
-          setSelectionBounds(bounds);
-        } else {
-          setSelectionBounds(null);
-        }
-      });
+    //     setSelectedElement(singleElement);
+    //     if (element && gameRef.current) {
+    //       const bounds = gameRef.current.renderSelectionBox(singleElement);
+    //       setSelectionBounds(bounds);
+    //     } else {
+    //       setSelectionBounds(null);
+    //     }
+    //   });
 
-      game.onElementUpdate((elements: any) => {
-        undoRedoManager.pushState(elements);
-      });
+    //   game.onElementUpdate((elements: any) => {
+    //     undoRedoManager.pushState(elements);
+    //   });
 
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.ctrlKey || e.metaKey) {
-          switch (e.key) {
-            case "z":
-              e.preventDefault();
-              const undoState = undoRedoManager.undo();
-              if (undoState) game.setElements(undoState);
-              break;
-            case "y":
-              e.preventDefault();
-              const redoState = undoRedoManager.redo();
-              if (redoState) game.setElements(redoState);
-              break;
-          }
-        }
+    //   const handleKeyDown = (e: KeyboardEvent) => {
+    //     if (e.ctrlKey || e.metaKey) {
+    //       switch (e.key) {
+    //         case "z":
+    //           e.preventDefault();
+    //           const undoState = undoRedoManager.undo();
+    //           if (undoState) game.setElements(undoState);
+    //           break;
+    //         case "y":
+    //           e.preventDefault();
+    //           const redoState = undoRedoManager.redo();
+    //           if (redoState) game.setElements(redoState);
+    //           break;
+    //       }
+    //     }
 
-        if (e.key === "Escape") clearSelectionAndSidebar();
-      };
+    //     if (e.key === "Escape") clearSelectionAndSidebar();
+    //   };
 
-      const handleCanvasClick = (e: MouseEvent) => {
-        const target = e.target as HTMLElement;
-        const isCanvasClick = target.tagName.toLowerCase() === "canvas";
-        if (isCanvasClick && !gameRef.current?.isClickingElement(e)) {
-          clearSelectionAndSidebar();
-        }
-      };
+    //   const handleCanvasClick = (e: MouseEvent) => {
+    //     const target = e.target as HTMLElement;
+    //     const isCanvasClick = target.tagName.toLowerCase() === "canvas";
+    //     if (isCanvasClick && !gameRef.current?.isClickingElement(e)) {
+    //       clearSelectionAndSidebar();
+    //     }
+    //   };
 
-      const handleGlobalClick = (e: MouseEvent) => {
-        const target = e.target as HTMLElement;
-        const isCanvasOrChild = canvas.contains(target);
-        const isRotationHandle = target.closest("[data-rotation-handle]") !== null;
-        const isSelectionBox = target.closest("[data-selection-box]") !== null;
-        const isSidebar = target.closest(".sidebar") !== null;
+    //   const handleGlobalClick = (e: MouseEvent) => {
+    //     const target = e.target as HTMLElement;
+    //     const isCanvasOrChild = canvas.contains(target);
+    //     const isRotationHandle = target.closest("[data-rotation-handle]") !== null;
+    //     const isSelectionBox = target.closest("[data-selection-box]") !== null;
+    //     const isSidebar = target.closest(".sidebar") !== null;
 
-        if (
-          !isCanvasOrChild &&
-          !isRotationHandle &&
-          !isSelectionBox &&
-          !isSidebar
-        ) {
-          clearSelectionAndSidebar();
-        }
-      };
+    //     if (
+    //       !isCanvasOrChild &&
+    //       !isRotationHandle &&
+    //       !isSelectionBox &&
+    //       !isSidebar
+    //     ) {
+    //       clearSelectionAndSidebar();
+    //     }
+    //   };
 
-      window.addEventListener("keydown", handleKeyDown);
-      window.addEventListener("click", handleGlobalClick);
-      canvas.addEventListener("click", handleCanvasClick);
+    //   window.addEventListener("keydown", handleKeyDown);
+    //   window.addEventListener("click", handleGlobalClick);
+    //   canvas.addEventListener("click", handleCanvasClick);
 
-      return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-        window.removeEventListener("click", handleGlobalClick);
-        canvas.removeEventListener("click", handleCanvasClick);
-        game.destroy();
-      };
+    //   return () => {
+    //     window.removeEventListener("keydown", handleKeyDown);
+    //     window.removeEventListener("click", handleGlobalClick);
+    //     canvas.removeEventListener("click", handleCanvasClick);
+    //     game.destroy();
+    //   };
     }
   }, [roomId, socket]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden">
-      <canvas ref={canvasRef} className="absolute top-0 left-0 bg-white" />
-      {selectionBounds && selectedElement && (
+    <div className="h-screen overflow-hidden">
+      <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />
+      {/* {selectionBounds && selectedElement && (
         <SelectionBox
           element={selectedElement}
           bounds={selectionBounds.screenBounds}
@@ -189,24 +172,15 @@ export function Canvas({
             }
           }}              
         />
-      )}
+      )} */}
       <Topbar
         selectedTool={selectedTool}
         setSelectedTool={(tool) => {
           setSelectedTool(tool);
           gameRef.current?.setTool(tool);
-
-          if (tool !== "pan") {
-            gameRef.current?.setPanning(false);
-          }
-
-          if (tool !== "selection") {
-            setSelectedElement(null);
-            setSelectionBounds(null);
-          }
         }}
       />
-      <Sidebar
+      {/* <Sidebar
         selectedTool={selectedTool}
         selectedElement={selectedElement ? selectedElement : null}
         onClose={clearSelectionAndSidebar}
@@ -221,7 +195,7 @@ export function Canvas({
           gameRef.current?.setStrokeStyle(style as "solid" | "dashed" | "dotted")
         }
         resetCamera={() => gameRef.current?.resetCamera()}
-      />
+      /> */}
     </div>
   );
 }

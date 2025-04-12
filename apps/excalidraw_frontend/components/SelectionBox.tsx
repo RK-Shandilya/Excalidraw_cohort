@@ -1,5 +1,5 @@
 import { ExcalidrawElement } from '@/draw/types/types';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface SelectionBoxProps {
   element: ExcalidrawElement;
@@ -20,6 +20,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
   const [isRotating, setIsRotating] = useState(false);
   const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
   const [startBounds, setStartBounds] = useState(bounds);
+  console.log(isResizing, isRotating, startPoint, element);
 
   const HANDLE_SIZE = 8;
   const ROTATION_HANDLE_DISTANCE = 24;
@@ -40,25 +41,25 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
       if (type === 'resize' && position) {
         const dx = (e.clientX - startPoint.x) / zoom;
         const dy = (e.clientY - startPoint.y) / zoom;
-    
+
         // Convert the delta to the element's local coordinate system
         const angle = (-startBounds.angle * Math.PI) / 180; // Convert angle to radians
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-    
+
         // Rotate the delta (dx, dy) to align with the element's rotated axes
         const rotatedDx = dx * cos - dy * sin;
         const rotatedDy = dx * sin + dy * cos;
-    
+
         // Calculate new bounds in world coordinates
         let newX = startBounds.x;
         let newY = startBounds.y;
         let newWidth = startBounds.width;
         let newHeight = startBounds.height;
-    
+
         // Maintain aspect ratio if Shift key is pressed
         const aspectRatio = e.shiftKey ? startBounds.width / startBounds.height : null;
-    
+
         // Adjust the bounds based on the resizing handle position
         if (position.includes('w')) {
           newX = startBounds.x + rotatedDx;
@@ -74,7 +75,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         if (position.includes('s')) {
           newHeight = startBounds.height + rotatedDy;
         }
-    
+
         // Maintain aspect ratio if Shift is pressed
         if (aspectRatio !== null) {
           if (position.includes('w') || position.includes('e')) {
@@ -83,7 +84,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
             newWidth = newHeight * aspectRatio;
           }
         }
-    
+
         // Prevent negative dimensions
         if (newWidth < 0) {
           newX += newWidth;
@@ -93,7 +94,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           newY += newHeight;
           newHeight = Math.abs(newHeight);
         }
-    
+
         // Ensure minimum size
         if (newWidth >= 1 && newHeight >= 1) {
           onResize(newX, newY, newWidth, newHeight);
@@ -104,7 +105,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           x: startBounds.x + startBounds.width / 2,
           y: startBounds.y + startBounds.height / 2
         };
-    
+
         // Calculate angles from center to start and current points
         const startAngle = Math.atan2(
           startPoint.y - center.y * zoom,
@@ -114,22 +115,23 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
           e.clientY - center.y * zoom,
           e.clientX - center.x * zoom
         );
-    
+
         // Calculate rotation delta and add to starting angle
-        let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
+        const angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
         let newAngle = (startBounds.angle + angleDelta) % 360;
-    
+
         // Snap to 15-degree intervals if Shift is held
         if (e.shiftKey) {
           newAngle = Math.round(newAngle / 15) * 15;
         }
-    
+
         if (newAngle < 0) newAngle += 360;
         onRotate(newAngle);
       }
     };
 
     const handleMouseUp = () => {
+      
       setIsResizing(false);
       setIsRotating(false);
       window.removeEventListener('mousemove', handleMouseMove);
@@ -144,11 +146,11 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
   const getResizeHandles = () => {
     const positions = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
     const angle = bounds.angle;
-    
+
     return positions.map(pos => {
       let cursor: string | undefined = pos + '-resize';
       const rotatedAngle = (angle + 180) % 180;
-      
+
       if (rotatedAngle > 22.5 && rotatedAngle <= 67.5) {
         cursor = {
           'nw': 'n-resize', 'n': 'ne-resize', 'ne': 'e-resize',
@@ -172,18 +174,18 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
       return {
         position: pos,
         cursor,
-        x: pos.includes('w') ? -HANDLE_SIZE/2 :
-           pos.includes('e') ? bounds.width - HANDLE_SIZE/2 :
-           bounds.width/2 - HANDLE_SIZE/2,
-        y: pos.includes('n') ? -HANDLE_SIZE/2 :
-           pos.includes('s') ? bounds.height - HANDLE_SIZE/2 :
-           bounds.height/2 - HANDLE_SIZE/2
+        x: pos.includes('w') ? -HANDLE_SIZE / 2 :
+           pos.includes('e') ? bounds.width - HANDLE_SIZE / 2 :
+           bounds.width / 2 - HANDLE_SIZE / 2,
+        y: pos.includes('n') ? -HANDLE_SIZE / 2 :
+           pos.includes('s') ? bounds.height - HANDLE_SIZE / 2 :
+           bounds.height / 2 - HANDLE_SIZE / 2
       };
     });
   };
 
   return (
-    <div 
+    <div
       className="absolute pointer-events-none"
       style={{
         transform: `translate(${bounds.x}px, ${bounds.y}px) rotate(${bounds.angle}deg)`,
@@ -194,7 +196,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
       data-selection-box
     >
       <div className="absolute inset-0 border-2 border-blue-500 border-dashed" />
-      
+
       {getResizeHandles().map((handle, index) => (
         <div
           key={index}
@@ -214,7 +216,7 @@ export default function SelectionBox({ element, bounds, onResize, onRotate, zoom
         style={{
           width: HANDLE_SIZE,
           height: HANDLE_SIZE,
-          transform: `translate(-${HANDLE_SIZE/2}px, -${ROTATION_HANDLE_DISTANCE + HANDLE_SIZE}px)`,
+          transform: `translate(-${HANDLE_SIZE / 2}px, -${ROTATION_HANDLE_DISTANCE + HANDLE_SIZE}px)`,
           cursor: 'grab',
         }}
         onMouseDown={(e) => handleMouseDown(e, 'rotate')}

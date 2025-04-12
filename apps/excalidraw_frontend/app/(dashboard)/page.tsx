@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
+import Image from 'next/image';
 
 function Dashboard() {
     const router = useRouter();
@@ -118,8 +119,9 @@ function Dashboard() {
               </ul>
             </div>
             <div className="md:w-1/2">
-              <img 
+              <Image 
                 src="https://images.unsplash.com/photo-1611224923853-80b023f02d71?auto=format&fit=crop&w=800&q=80" 
+                width={500} height={500}
                 alt="Example Diagram" 
                 className="rounded-lg shadow-lg"
               />

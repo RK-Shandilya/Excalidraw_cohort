@@ -8,8 +8,7 @@ export const authMiddleware:any = (req: Request, res: Response, next: NextFuncti
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
         if(decoded) {
-            // @ts-ignore
-            req.user = decoded.userId;
+            req.userId = decoded.userId;
             next();
         }
     } catch (error) {

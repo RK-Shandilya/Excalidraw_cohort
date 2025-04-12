@@ -1,99 +1,99 @@
-import WebSocket from 'ws'
+import {WebSocket} from 'ws'
 import jwt from 'jsonwebtoken'
-import { JWT_SECRET } from '@repo/backend-common/config'
-const wss = new WebSocket.Server({ port: 8080 })
- 
+process.loadEnvFile("../../.env");
+const wss = new WebSocket.Server({port: 8080})
+
 interface User {
-    ws : WebSocket,
+    ws: WebSocket
     rooms: string[],
     userId: string
 }
 
-const users: User[] = []
+const users:User[] = [];
 
-function checkUser(token : string): string | null {
-    const decoded = jwt.verify(token, JWT_SECRET);
+function checkUser(token: string) {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
     if(!decoded || typeof decoded === 'string' || !decoded.userId) {
         return null;
     }
     return decoded['userId'];
 }
 
-wss.on("connection", (ws: WebSocket , request) => {
-    console.log("Client connected");
+wss.on("connection", (ws: WebSocket, request)=> {
     const url = request.url;
     if(!url) return;
-    const queryParams = new URLSearchParams(url.split('?')[1]);
-    const token = queryParams.get("token") || "";
+    const queryparams = new URLSearchParams(url.split('?')[1]);
+    const token = queryparams.get("token") || "";
     const userId = checkUser(token);
-
     if(!userId) {
         ws.close();
         return;
     }
+    console.log("user connected");
 
     users.push({
         ws,
         rooms: [],
-        userId: userId
+        userId
     })
 
-    ws.on("message", (data) => {
+    ws.on("message", async(data)=> {
         const parsedData = JSON.parse(data.toString());
-        switch (parsedData.type) {
+        switch (parsedData.type){
             case "joinRoom":
-                console.log("Joining room");
-                const currentUser = users.find((x)=>x.ws===ws);
-                if (!currentUser) {
+                const currentUser = users.find((x)=> x.ws === ws);
+                if(!currentUser) {
                     console.error("User not found for WebSocket connection");
                     return;
                 }
-
-                if (!currentUser.rooms.includes(parsedData.roomId)) {
+                if(!currentUser.rooms.includes(parsedData.roomId)){
                     currentUser.rooms.push(parsedData.roomId);
-                }   
+                }
+                console.log("room joined");
                 break;
 
             case "leaveRoom":
-                const user = users.find((x)=>x.ws===ws);
-                if (!user) {
+                const user = users.find((x)=> x.ws === ws);
+                if(!user) {
                     console.error("User not found for WebSocket connection");
                     return;
                 }
                 user.rooms = user.rooms.filter((x)=> x===parsedData.rooms);
                 break;
 
-            case 'chat':
-                const chatRoomId = parsedData.roomId;
-                const message = parsedData.message;
+            case "draw":
+                const roomId = parsedData.roomId;
+                const drawing = parsedData.drawing;
 
-                users.forEach(( user) => {
-                    if (user.rooms.includes(chatRoomId)) {
-                        user.ws.send(JSON.stringify({
-                            type: "chat",
-                            message: message,
-                            roomId: chatRoomId
-                        }))
-                    }
-                })
-                break;
+                console.log(drawing);
 
-            case "scene-update":
-                const { roomId, elements } = parsedData;
                 users.forEach((user) => {
-                    if (user.rooms.includes(roomId)) {
-                        user.ws.send(JSON.stringify({
-                            type: "scene-update",
-                            roomId,
-                            elements,
-                        }));
+                    if(user.rooms.includes(roomId)){
+                        if(user.ws != ws) {
+                            user.ws.send(JSON.stringify({
+                                type: "draw",
+                                drawing: drawing,
+                                roomId: roomId
+                            }))
+                        }
                     }
                 });
                 break;
-        }
-    })
+            case "erase":
+                const rID = parsedData.roomId;
+                const erasedIndices = parsedData.erasedIndices;
 
-    ws.on("error", (error) => {
-        console.error("Error occurred on WebSocket connection:", error);
+                users.forEach((user)=> {
+                    if(user.rooms.includes(rID)) {
+                        if(user.ws !==ws){
+                            user.ws.send(JSON.stringify({
+                                type: "erase",
+                                erasedIndices,
+                                roomId: rID,
+                            }))
+                        }
+                    }
+                })
+        }
     })
 })

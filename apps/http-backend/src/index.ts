@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request } from "express";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from '@repo/backend-common/config';
 import { authMiddleware } from "./middleware";
@@ -33,12 +33,11 @@ app.post("/signup", async (req, res) => {
         const user = await PrismaClient.user.create({
             data: {
                 email: parsedData.data?.email,
-                // TODO: Hash the pw
                 password: hashedPassword,
                 name: parsedData.data.name
             }
         })
-        res.json({
+        res.status(200).json({
             userId: user.id
         })
     } catch(e) {
@@ -90,7 +89,7 @@ app.post("/signin", async (req, res) => {
     })
 })
 
-app.post("/room", authMiddleware, async (req, res) => {
+app.post("/room", authMiddleware, async (req: Request, res) => {
     const parsedData = CreateRoomSchema.safeParse(req.body);
     if (!parsedData.success) {
         res.json({
@@ -98,7 +97,7 @@ app.post("/room", authMiddleware, async (req, res) => {
         })
         return;
     }
-    // @ts-ignore: TODO: Fix this
+    
     const userId = req.userId;
 
     try {

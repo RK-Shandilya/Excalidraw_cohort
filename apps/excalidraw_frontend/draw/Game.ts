@@ -9,6 +9,7 @@ import { EraserTool } from './managers/EraserManager';
 
 import { AppState, ExcalidrawElement, Point, Tool } from './types/types';
 import { Camera } from './Camera';
+import { getExistingShapes } from './http';
 
 
 export class Game {
@@ -61,7 +62,8 @@ export class Game {
       this.scene,
       this.state,
       this.camera,
-      this.renderManager
+      this.renderManager,
+      this.stateManager
     );
     this.eraserManager = new EraserTool(
       this.scene,
@@ -76,6 +78,7 @@ export class Game {
   
     // Add scene update listener
     this.scene.addUpdateListener((elements) => {
+      console.log(elements);
       this.render();
     });
   
@@ -100,6 +103,12 @@ export class Game {
     this.eventManager.setupSceneListener();
   }
 
+  async init() {
+    const existingShapes = await getExistingShapes(this.roomId);
+    console.log(existingShapes);
+    this.render();
+  }
+
   // Delegated methods
   public setTool(tool: Tool) {
     this.stateManager.setTool(tool);
@@ -122,6 +131,7 @@ export class Game {
     this.renderManager.render(this.scene.getElements());
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSelectionChange(callback: any){
     this.selectionManager.onSelectionChange(callback);
   }
@@ -131,6 +141,7 @@ export class Game {
     return element1
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onElementUpdate(callback: any) {
     this.selectionManager.onElementUpdate(callback)
   }

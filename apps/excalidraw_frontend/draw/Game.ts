@@ -17,9 +17,15 @@ export class Game {
   private isPanning: boolean = false;
   private panOffset = {x:0 , y:0};
   private panStart = {x:0, y:0}; 
+
+  private zoom: number = 1;
+  private minZoom: number = 0.1;
+  private maxZoom: number = 3;
   
   private isErasing: boolean = false;
+
   private selectedElementIndex: number | null = null;
+  private resizeHandleSize: number = 8;
 
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
     this.roomId = roomId;
@@ -61,8 +67,98 @@ export class Game {
     this.canvas.addEventListener("mousedown", this.handleMouseDown);
     this.canvas.addEventListener("mousemove", this.handleMouseMove);
     this.canvas.addEventListener("mouseup", this.handleMouseUp);
+    this.canvas.addEventListener("wheel", this.handleWheel);
   };
 
+  private handleWheel = (event: WheelEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if(event.deltaY < 0) {
+        this.zoom = Math.min(this.maxZoom, this.zoom*1.1);
+    } else {
+        this.zoom = Math.max(this.minZoom, this.zoom / 1.1);
+    }
+    this.redraw();
+  }
+
+  private getElementBoundary = (element: Shape) => {
+    let minX=0, minY=0, maxX=0, maxY=0;
+
+    switch(element.type) {
+        case "rect":
+            minX = element.x;
+            minY = element.y;
+            maxX = element.width + element.x;
+            maxY = element.height + element.y;
+            break;
+        case "circle":
+            minX = element.centerX - element.radius.x;
+            minY = element.centerY - element.radius.y;
+            maxX = element.centerX + element.radius.x;
+            maxY = element.centerY + element.radius.y;
+            break;
+        case "line":
+        case "arrow":
+            minX = Math.min(element.startingPoint.x, element.endingPoint.x);
+            minY = Math.min(element.startingPoint.y, element.endingPoint.y);
+            maxX = Math.max(element.startingPoint.x, element.endingPoint.x);
+            maxY = Math.max(element.startingPoint.y, element.endingPoint.y);
+            break;
+        case "pencil":
+            if (element.points.length > 0) {
+                minX = maxX = element.points[0]!.x;
+                minY = maxY = element.points[0]!.y;
+                
+                for (const point of element.points) {
+                  minX = Math.min(minX, point.x);
+                  minY = Math.min(minY, point.y);
+                  maxX = Math.max(maxX, point.x);
+                  maxY = Math.max(maxY, point.y);
+                }
+              }
+              break;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  private drawResizeHandles = (element: Shape) => {
+    if(!this.ctx) return;
+    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
+    const handleSize = this.resizeHandleSize;
+  
+    this.ctx.save();
+    this.ctx.fillStyle = "#1E90FF";
+  
+    switch (element.type) {
+      case "rect":
+      case "circle":
+      case "pencil":
+        this.ctx.fillRect(minX - handleSize / 2, minY - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(maxX - handleSize / 2, minY - handleSize / 2, handleSize, handleSize); 
+        this.ctx.fillRect(minX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
+        this.ctx.fillRect(maxX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
+        
+        this.ctx.fillRect((minX + maxX)/2 - handleSize / 2, minY - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(maxX - handleSize / 2, (minY + maxY)/2 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect((minX + maxX)/2 - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
+        this.ctx.fillRect(minX - handleSize / 2, (minY + maxY)/2 - handleSize / 2, handleSize, handleSize);
+        break;
+        
+      case "line":
+      case "arrow":
+        this.ctx.beginPath();
+        this.ctx.arc(element.startingPoint.x, element.startingPoint.y, handleSize-2, 0, 2*Math.PI);
+        this.ctx.fill();
+        this.ctx.beginPath();
+        this.ctx.arc(element.endingPoint.x, element.endingPoint.y, handleSize-2, 0, 2*Math.PI);
+        this.ctx.fill();
+        break;
+    }
+    
+    this.ctx.restore();
+  }
+  
   private drawSelectionBoundary = (element: Shape) => {
     if (!this.ctx) return;
     
@@ -70,28 +166,14 @@ export class Game {
     
     this.ctx.strokeStyle = "#1E90FF";
     this.ctx.lineWidth = 2;
-    this.ctx.setLineDash([5, 3]);
+
+    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
     
     switch (element.type) {
         case "rect":
-            this.ctx.strokeRect(
-                element.x - 5, 
-                element.y - 5, 
-                element.width + 10, 
-                element.height + 10
-            );
-            break;
-            
         case "circle":
-            this.ctx.beginPath();
-            this.ctx.ellipse(
-                element.centerX,
-                element.centerY,
-                Math.abs(element.radius.x) + 5,
-                Math.abs(element.radius.y) + 5,
-                0, 0, 2 * Math.PI
-            );
-            this.ctx.stroke();
+        case "pencil":
+            this.ctx.strokeRect(minX - 5, minY - 5, maxX - minX + 10, maxY - minY + 10);
             break;
             
         case "line":
@@ -102,26 +184,12 @@ export class Game {
             this.ctx.stroke();
             break;
         }
-        case "pencil":
-            if (element.points.length > 0) {
-                let minX = element.points[0]!.x;
-                let minY = element.points[0]!.y;
-                let maxX = element.points[0]!.x;
-                let maxY = element.points[0]!.y;
-                
-                for (const point of element.points) {
-                    minX = Math.min(minX, point.x);
-                    minY = Math.min(minY, point.y);
-                    maxX = Math.max(maxX, point.x);
-                    maxY = Math.max(maxY, point.y);
-                }
-                
-                this.ctx.strokeRect(minX - 5, minY - 5, maxX - minX + 10, maxY - minY + 10);
-            }
-            break;
     }
     
     this.ctx.restore();
+    if (this.currentTool === "selection") {
+        this.drawResizeHandles(element);
+    }
   }
 
   private handleMouseDown = (event: MouseEvent) => {
@@ -560,7 +628,7 @@ export class Game {
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([]);
 
-    this.ctx.setTransform(1,0,0,1,this.panOffset.x, this.panOffset.y);
+    this.ctx.setTransform(this.zoom,0,0,this.zoom,this.panOffset.x, this.panOffset.y);
 
     this.elements.forEach((element: Shape) => {
       switch (element.type) {
@@ -641,8 +709,8 @@ export class Game {
     const rect = this.canvas.getBoundingClientRect();
     console.log("starting coord", screenX, screenY);
     return {
-        clientX: ((screenX - rect.left) - this.panOffset.x),
-        clientY: ((screenY - rect.top) - this.panOffset.y)
+        clientX: ((screenX - rect.left) - this.panOffset.x) /this.zoom,
+        clientY: ((screenY - rect.top) - this.panOffset.y) /this.zoom
     };
   }
 

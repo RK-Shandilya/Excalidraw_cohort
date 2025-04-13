@@ -26,6 +26,11 @@ export class Game {
 
   private selectedElementIndex: number | null = null;
   private resizeHandleSize: number = 8;
+  private isDragging: boolean = false;
+  private dragStartX: number = 0;
+  private dragStartY: number = 0;
+  /* eslint-disable  @typescript-eslint/no-explicit-any */
+  private elementStartPosition: any = null;
 
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
     this.roomId = roomId;
@@ -49,6 +54,11 @@ export class Game {
                 this.elements.splice(data.erasedIndices[i], 1);
             }
             this.redraw();
+        } else if (data.type === "update" && data.roomId === this.roomId){
+            if (data.index >= 0 && data.index < this.elements.length) {
+                this.elements[data.index] = data.updatedElement;
+                this.redraw();
+            }
         }
       } catch (error) {
         console.error("Error processing socket message:", error);
@@ -122,6 +132,30 @@ export class Game {
     return { minX, minY, maxX, maxY };
   }
 
+  private isPointInsideElement = (element: Shape, x: number, y: number): boolean => {
+    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
+    return x >= minX && x <= maxX && y >= minY && y <= maxY;
+  }
+
+  private cloneElementPosition = (element: Shape): any => {
+    switch (element.type) {
+      case "rect":
+        return { x: element.x, y: element.y, width: element.width, height: element.height };
+      case "circle":
+        return { centerX: element.centerX, centerY: element.centerY, radius: element.radius };
+      case "line":
+      case "arrow":
+        return { 
+          startingPoint: { ...element.startingPoint }, 
+          endingPoint: { ...element.endingPoint } 
+        };
+      case "pencil":
+        return { points: element.points.map(p => ({ ...p })) };
+      default:
+        return null;
+    }
+  }
+
   private drawResizeHandles = (element: Shape) => {
     if(!this.ctx) return;
     const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
@@ -139,10 +173,6 @@ export class Game {
         this.ctx.fillRect(minX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
         this.ctx.fillRect(maxX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
         
-        this.ctx.fillRect((minX + maxX)/2 - handleSize / 2, minY - handleSize / 2, handleSize, handleSize);
-        this.ctx.fillRect(maxX - handleSize / 2, (minY + maxY)/2 - handleSize / 2, handleSize, handleSize);
-        this.ctx.fillRect((minX + maxX)/2 - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
-        this.ctx.fillRect(minX - handleSize / 2, (minY + maxY)/2 - handleSize / 2, handleSize, handleSize);
         break;
         
       case "line":
@@ -217,23 +247,35 @@ export class Game {
         this.isErasing = true;
         this.createEraserCursor(canvasX, canvasY);
     } else if (this.currentTool == "selection") {
-        let foundElement = false;
-        if(this.elements.length > 0){
-            for (let i = this.elements.length - 1; i >= 0; i--) {
-                const element = this.elements[i];
-                if (this.isElementUnderEraser(element!, canvasX, canvasY, 10)) {
-                    this.selectedElementIndex = i;
-                    foundElement = true;
-                    break;
+        if(this.selectedElementIndex !== null) {
+            const element = this.elements[this.selectedElementIndex];
+            if (this.isPointInsideElement(element!, canvasX, canvasY)) {                    
+                this.isDragging = true;
+                this.dragStartX = canvasX;
+                this.dragStartY = canvasY;
+                this.elementStartPosition = this.cloneElementPosition(element!);
+                document.body.style.cursor = "move";
+            }
+            return;
+        } else {
+            let foundElement = false;
+            if(!foundElement && this.elements.length > 0){
+                for (let i = this.elements.length - 1; i >= 0; i--) {
+                    const element = this.elements[i];
+                    if (this.isElementUnderEraser(element!, canvasX, canvasY, 10)) {
+                        this.selectedElementIndex = i;
+                        foundElement = true;
+                        break;
+                    }
                 }
             }
-        }
         
-        if (!foundElement) {
-            this.selectedElementIndex = null;
+            if (!foundElement) {
+                this.selectedElementIndex = null;
+            }
+            this.redraw();
+            return;
         }
-        this.redraw();
-        return;
     } else {
         this.isDrawing = false;
     }
@@ -429,6 +471,39 @@ export class Game {
     return false;
   }
 
+  private applyDragToElement = (element: Shape, deltaX: number, deltaY: number): Shape => {
+    const updatedElement = { ...element };
+    switch (updatedElement.type) {
+        case "rect":
+            updatedElement.x = this.elementStartPosition.x + deltaX;
+            updatedElement.y = this.elementStartPosition.y + deltaY;
+        break;
+        case "circle":
+            updatedElement.centerX = this.elementStartPosition.centerX + deltaX;
+            updatedElement.centerY = this.elementStartPosition.centerY + deltaY;
+        break;
+        case "line":
+        case "arrow":
+            updatedElement.startingPoint = {
+            x: this.elementStartPosition.startingPoint.x + deltaX,
+            y: this.elementStartPosition.startingPoint.y + deltaY
+            };
+            updatedElement.endingPoint = {
+            x: this.elementStartPosition.endingPoint.x + deltaX,
+            y: this.elementStartPosition.endingPoint.y + deltaY
+            };
+        break;
+        case "pencil":
+            updatedElement.points = this.elementStartPosition.points.map((p: Point) => ({
+            x: p.x + deltaX,
+            y: p.y + deltaY
+            }));
+        break;
+    }
+    
+    return updatedElement;
+  }
+
   private handleMouseUp = (event: MouseEvent) => {
     event.stopPropagation();
     event.preventDefault();
@@ -442,11 +517,26 @@ export class Game {
         this.redraw();
         return;
     }
-    
+
     let shape: Shape | null = null;
     const result = this.screenToCanvas(event.clientX, event.clientY);
     const canvasX = result.clientX;
     const canvasY = result.clientY;
+
+    if (this.isDragging && this.selectedElementIndex !== null) {
+        this.isDragging = false;
+        document.body.style.cursor = "default";
+
+        this.socket.send(
+          JSON.stringify({
+            type: "update",
+            index: this.selectedElementIndex,
+            updatedElement: this.elements[this.selectedElementIndex],
+            roomId: this.roomId,
+          })
+        );
+        this.elementStartPosition = null;
+    }
 
     const dx = Math.abs(canvasX - this.startX);
     const dy = Math.abs(canvasY - this.startY);
@@ -545,6 +635,20 @@ export class Game {
     const result = this.screenToCanvas(event.clientX, event.clientY);
     const canvasX = result.clientX;
     const canvasY = result.clientY;
+
+    if(this.isDragging && this.selectedElementIndex !== null) {
+        const deltaX = canvasX - this.dragStartX;
+        const deltaY = canvasY - this.dragStartY;
+
+        const updatedElement = this.applyDragToElement(this.elements[this.selectedElementIndex]!, deltaX, deltaY);
+        this.elements[this.selectedElementIndex] = updatedElement;
+        
+        this.dragStartX = canvasX;
+        this.dragStartY = canvasY;
+
+        this.redraw();
+        return;
+    }
     
     this.redraw();
     if (this.currentTool == "line") {
@@ -707,7 +811,6 @@ export class Game {
 
   private screenToCanvas(screenX: number, screenY: number): {clientX: number, clientY: number} {
     const rect = this.canvas.getBoundingClientRect();
-    console.log("starting coord", screenX, screenY);
     return {
         clientX: ((screenX - rect.left) - this.panOffset.x) /this.zoom,
         clientY: ((screenY - rect.top) - this.panOffset.y) /this.zoom
@@ -718,5 +821,6 @@ export class Game {
     this.canvas.removeEventListener("mousedown", this.handleMouseDown);
     this.canvas.removeEventListener("mousemove", this.handleMouseMove);
     this.canvas.removeEventListener("mouseup", this.handleMouseUp);
+    this.canvas.removeEventListener("wheel", this.handleWheel);
   };
 }

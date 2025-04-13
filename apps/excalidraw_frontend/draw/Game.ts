@@ -26,10 +26,10 @@ export class Game {
 
   private selectedElementIndex: number | null = null;
   private resizeHandleSize: number = 8;
+
   private isDragging: boolean = false;
   private dragStartX: number = 0;
   private dragStartY: number = 0;
-  /* eslint-disable  @typescript-eslint/no-explicit-any */
   private elementStartPosition: any = null;
 
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
@@ -172,7 +172,6 @@ export class Game {
         this.ctx.fillRect(maxX - handleSize / 2, minY - handleSize / 2, handleSize, handleSize); 
         this.ctx.fillRect(minX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
         this.ctx.fillRect(maxX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
-        
         break;
         
       case "line":
@@ -209,9 +208,11 @@ export class Game {
         case "line":
         case "arrow": {
             this.ctx.beginPath();
+            this.ctx.lineWidth = 3;
             this.ctx.moveTo(element.startingPoint.x, element.startingPoint.y);
             this.ctx.lineTo(element.endingPoint.x, element.endingPoint.y);
             this.ctx.stroke();
+
             break;
         }
     }
@@ -249,12 +250,28 @@ export class Game {
     } else if (this.currentTool == "selection") {
         if(this.selectedElementIndex !== null) {
             const element = this.elements[this.selectedElementIndex];
-            if (this.isPointInsideElement(element!, canvasX, canvasY)) {                    
-                this.isDragging = true;
-                this.dragStartX = canvasX;
-                this.dragStartY = canvasY;
-                this.elementStartPosition = this.cloneElementPosition(element!);
-                document.body.style.cursor = "move";
+            switch (element?.type) {
+                case "arrow":
+                case "line":
+                    if(this.isLineNearPoint(element.startingPoint.x,element.startingPoint.y, element.endingPoint.x, element.endingPoint.y, canvasX, canvasY ,10)){
+                        this.isDragging = true;
+                        this.dragStartX = canvasX;
+                        this.dragStartY = canvasY;
+                        this.elementStartPosition = this.cloneElementPosition(element!);
+                        document.body.style.cursor = "move";
+                    }
+                break;
+                case "circle":
+                case "pencil":
+                case "rect":
+                    if (this.isPointInsideElement(element!, canvasX, canvasY)) {                    
+                        this.isDragging = true;
+                        this.dragStartX = canvasX;
+                        this.dragStartY = canvasY;
+                        this.elementStartPosition = this.cloneElementPosition(element!);
+                        document.body.style.cursor = "move";
+                    }
+                break;
             }
             return;
         } else {
@@ -471,7 +488,12 @@ export class Game {
     return false;
   }
 
-  private applyDragToElement = (element: Shape, deltaX: number, deltaY: number): Shape => {
+  private applyDragToElement = (element: Shape, currentX: number, currentY: number): Shape => {
+    if (!this.elementStartPosition) return element;
+    
+    const deltaX = currentX - this.dragStartX;
+    const deltaY = currentY - this.dragStartY;
+    
     const updatedElement = { ...element };
     switch (updatedElement.type) {
         case "rect":
@@ -637,15 +659,13 @@ export class Game {
     const canvasY = result.clientY;
 
     if(this.isDragging && this.selectedElementIndex !== null) {
-        const deltaX = canvasX - this.dragStartX;
-        const deltaY = canvasY - this.dragStartY;
-
-        const updatedElement = this.applyDragToElement(this.elements[this.selectedElementIndex]!, deltaX, deltaY);
-        this.elements[this.selectedElementIndex] = updatedElement;
+        const updatedElement = this.applyDragToElement(
+            this.elements[this.selectedElementIndex]!, 
+            canvasX, 
+            canvasY
+        );
         
-        this.dragStartX = canvasX;
-        this.dragStartY = canvasY;
-
+        this.elements[this.selectedElementIndex] = updatedElement;
         this.redraw();
         return;
     }

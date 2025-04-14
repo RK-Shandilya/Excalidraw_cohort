@@ -94,6 +94,24 @@ wss.on("connection", (ws: WebSocket, request)=> {
                         }
                     }
                 })
+            break;
+            case "update":
+                const index = parsedData.index;
+                const updatedElement = parsedData.updatedElement;
+                const id = parsedData.roomId;
+                users.forEach((user)=> {
+                    if(user.rooms.includes(id)) {
+                        if(user.ws !==ws) {
+                            user.ws.send(JSON.stringify({
+                                type: "update",
+                                index,
+                                updatedElement,
+                                roomId: id,
+                            }))
+                        }
+                    }
+                })
+            break;
         }
     })
 })

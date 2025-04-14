@@ -9,17 +9,11 @@ export type Shape = {
   type: string;
 } & (
   | {
-        type: "rect";
+        type: "rect" | "circle";
         x: number;
         y: number;
         width: number;
         height: number;
-    }
-  | {
-        type: "circle";
-        centerX: number;
-        centerY: number;
-        radius: Point;
     }
   | {
         type: "line";
@@ -40,5 +34,9 @@ export type Shape = {
   | {
         type: "pencil";
         points: Point[];
+        x: number;
+        y: number;
+        width: number;
+        height: number;
     }
 );

@@ -26,7 +26,8 @@ export class Game {
 
   private selectedElementIndex: number | null = null;
   private resizeHandleSize: number = 8;
-
+  private isResizing: boolean = false
+  private resizeHandle : string | undefined = undefined;
   private isDragging: boolean = false;
   private dragStartX: number = 0;
   private dragStartY: number = 0;
@@ -97,16 +98,11 @@ export class Game {
 
     switch(element.type) {
         case "rect":
+        case "circle":
             minX = element.x;
             minY = element.y;
             maxX = element.width + element.x;
             maxY = element.height + element.y;
-            break;
-        case "circle":
-            minX = element.centerX - element.radius.x;
-            minY = element.centerY - element.radius.y;
-            maxX = element.centerX + element.radius.x;
-            maxY = element.centerY + element.radius.y;
             break;
         case "line":
         case "arrow":
@@ -140,9 +136,8 @@ export class Game {
   private cloneElementPosition = (element: Shape): any => {
     switch (element.type) {
       case "rect":
-        return { x: element.x, y: element.y, width: element.width, height: element.height };
       case "circle":
-        return { centerX: element.centerX, centerY: element.centerY, radius: element.radius };
+        return { x: element.x, y: element.y, width: element.width, height: element.height };
       case "line":
       case "arrow":
         return { 
@@ -150,7 +145,13 @@ export class Game {
           endingPoint: { ...element.endingPoint } 
         };
       case "pencil":
-        return { points: element.points.map(p => ({ ...p })) };
+        return { 
+            points: element.points.map(p => ({ ...p })),
+            x: element.x,
+            y: element.y,
+            width: element.width,
+            height: element.height
+          };
       default:
         return null;
     }
@@ -204,17 +205,6 @@ export class Game {
         case "pencil":
             this.ctx.strokeRect(minX - 5, minY - 5, maxX - minX + 10, maxY - minY + 10);
             break;
-            
-        case "line":
-        case "arrow": {
-            this.ctx.beginPath();
-            this.ctx.lineWidth = 3;
-            this.ctx.moveTo(element.startingPoint.x, element.startingPoint.y);
-            this.ctx.lineTo(element.endingPoint.x, element.endingPoint.y);
-            this.ctx.stroke();
-
-            break;
-        }
     }
     
     this.ctx.restore();
@@ -222,6 +212,111 @@ export class Game {
         this.drawResizeHandles(element);
     }
   }
+
+  private isPointOnSelectionBoundary = (element: Shape, x: number, y: number) => {
+    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
+    const handleSize = this.resizeHandleSize;
+
+    switch (element.type) {
+        case "circle":
+        case "rect":
+        case "pencil":
+            if(Math.abs(x-minX)<=handleSize/2 && Math.abs(y-minY)<=handleSize/2) {
+                return { onBoundary: true, handlePosition: "top-left" };
+            } 
+            if(Math.abs(x-maxX)<=handleSize/2 && Math.abs(y-minY)<=handleSize/2) {
+                return { onBoundary: true, handlePosition: "top-right"};
+            }
+            if(Math.abs(x-maxX)<=handleSize/2 && Math.abs(y-maxY)<=handleSize/2) {
+                return { onBoundary: true, handlePosition: "bottom-right"};
+            }
+            if(Math.abs(x-minX)<=handleSize/2 && Math.abs(y-maxY)<=handleSize/2) {
+                return { onBoundary: true, handlePosition: "bottom-left"};
+            }
+        break;
+        case "line":
+        case "arrow":
+            if (Math.sqrt(Math.pow(x - element.startingPoint.x, 2) + Math.pow(y - element.startingPoint.y, 2)) <= handleSize) {
+                return { onBoundary: true, handlePosition: "start" };
+            }
+            if (Math.sqrt(Math.pow(x - element.endingPoint.x, 2) + Math.pow(y - element.endingPoint.y, 2)) <= handleSize) {
+                return { onBoundary: true, handlePosition: "end" };
+            }
+    }
+    return { onBoundary: false };
+  }
+
+  private applyResizeToElement(element: Shape, currentX: number, currentY: number, handle: string): Shape {
+    if (!this.elementStartPosition) return element;
+    
+    const updatedElement = { ...element };
+    
+    if (updatedElement.type === "line" || updatedElement.type === "arrow") {
+      if (handle === "start") {
+        updatedElement.startingPoint = { x: currentX, y: currentY };
+        return updatedElement;
+      } else if (handle === "end") {
+        updatedElement.endingPoint = { x: currentX, y: currentY };
+        return updatedElement;
+      }
+    }
+    
+    const original = this.elementStartPosition;
+
+    let x = original.x;
+    let y = original.y;
+    let width = original.width;
+    let height = original.height;
+    
+    if (updatedElement.type == "rect" || updatedElement.type == "circle" || updatedElement.type == "pencil") {
+        // movement is based on edges
+        if (handle.includes("left")) {
+          const newX = currentX;
+          width = original.x + original.width - newX;
+          x = newX;
+        } else if (handle.includes("right")) {
+          width = currentX - original.x;
+        }
+        
+        if (handle.includes("top")) {
+          const newY = currentY;
+          height = original.y + original.height - newY;
+          y = newY;
+        } else if (handle.includes("bottom")) {
+          height = currentY - original.y;
+        }
+        
+        if (width < 0) {
+          x = x + width;
+          width = Math.abs(width);
+        }
+        
+        if (height < 0) {
+          y = y + height;
+          height = Math.abs(height);
+        }
+        
+        updatedElement.x = x;
+        updatedElement.y = y;
+        updatedElement.width = width;
+        updatedElement.height = height;
+        
+        if(updatedElement.type == "pencil") {
+          const newPoints = original.points.map((point: Point) => {
+            const relX = original.width === 0 ? 0 : (point.x - original.x) / original.width;
+            const relY = original.height === 0 ? 0 : (point.y - original.y) / original.height;
+            
+            return {
+              x: x + (relX * width),
+              y: y + (relY * height)
+            };
+          });
+          
+          updatedElement.points = newPoints;
+        }
+    }
+    return updatedElement;
+}
 
   private handleMouseDown = (event: MouseEvent) => {
     event.stopPropagation();
@@ -250,6 +345,30 @@ export class Game {
     } else if (this.currentTool == "selection") {
         if(this.selectedElementIndex !== null) {
             const element = this.elements[this.selectedElementIndex];
+            const {onBoundary, handlePosition} = this.isPointOnSelectionBoundary(element!, canvasX, canvasY);
+
+            if(onBoundary) {
+                this.isResizing = true;
+                this.resizeHandle = handlePosition;
+                this.dragStartX = canvasX;
+                this.dragStartY = canvasY;
+                this.elementStartPosition = this.cloneElementPosition(element!);
+                switch (handlePosition) {
+                    case "top-left":
+                    case "bottom-right":
+                      document.body.style.cursor = "nwse-resize";
+                      break;
+                    case "top-right":
+                    case "bottom-left":
+                      document.body.style.cursor = "nesw-resize";
+                      break;
+                    case "start":
+                    case "end":
+                        document.body.style.cursor = "pointer";
+                  }
+                  return;
+            }
+
             switch (element?.type) {
                 case "arrow":
                 case "line":
@@ -445,9 +564,21 @@ export class Game {
     px: number,
     py: number,
     tolerance: number,
-    circle: Shape
+    circle1: Shape
   ): boolean {
-    if (circle.type !== "circle") return false;
+    if(circle1.type != "circle") {
+        return false;
+    }
+
+    const circle = {
+        type: circle1.type,
+        centerX: circle1.x + circle1.width/2,
+        centerY: circle1.y + circle1.height/2,
+        radius: {
+            x : circle1.width/2,
+            y: circle1.height/2
+        }
+    }
     
     const dx = px - circle.centerX;
     const dy = py - circle.centerY;
@@ -497,12 +628,9 @@ export class Game {
     const updatedElement = { ...element };
     switch (updatedElement.type) {
         case "rect":
+        case "circle":
             updatedElement.x = this.elementStartPosition.x + deltaX;
             updatedElement.y = this.elementStartPosition.y + deltaY;
-        break;
-        case "circle":
-            updatedElement.centerX = this.elementStartPosition.centerX + deltaX;
-            updatedElement.centerY = this.elementStartPosition.centerY + deltaY;
         break;
         case "line":
         case "arrow":
@@ -516,6 +644,8 @@ export class Game {
             };
         break;
         case "pencil":
+            updatedElement.x = this.elementStartPosition.x + deltaX;
+            updatedElement.y = this.elementStartPosition.y + deltaY;
             updatedElement.points = this.elementStartPosition.points.map((p: Point) => ({
             x: p.x + deltaX,
             y: p.y + deltaY
@@ -560,6 +690,22 @@ export class Game {
         this.elementStartPosition = null;
     }
 
+    if (this.isResizing && this.selectedElementIndex !== null) {
+        this.isResizing = false;
+        document.body.style.cursor = "default";
+        this.resizeHandle = "";
+        
+        this.socket.send(
+          JSON.stringify({
+            type: "update",
+            index: this.selectedElementIndex,
+            updatedElement: this.elements[this.selectedElementIndex],
+            roomId: this.roomId,
+          })
+        );
+        this.elementStartPosition = null;
+      }
+
     const dx = Math.abs(canvasX - this.startX);
     const dy = Math.abs(canvasY - this.startY);
     const minDragDistance = 3;
@@ -588,19 +734,31 @@ export class Game {
     } else if (this.currentTool == "circle") {
       shape = {
         type: "circle",
-        centerX: (canvasX - this.startX) / 2 + this.startX,
-        centerY: (canvasY - this.startY) / 2 + this.startY,
-        radius: {
-          x: Math.abs((canvasX - this.startX) / 2),
-          y: Math.abs((canvasY - this.startY) / 2),
-        },
+        x: this.startX,
+        y: this.startY,
+        width: canvasX - this.startX,
+        height: canvasY - this.startY,
       }
     } else if (this.currentTool == "pencil") {
-      shape = {
-        type: "pencil",
-        points: this.points,
-      }
-      this.points = [];
+        const tempShape = {
+            type: "pencil",
+            points: this.points,
+            x:-1,
+            y:-1,
+            width: -1,
+            height: -1
+        }
+        const boundary = this.getElementBoundary(tempShape as Shape);
+        const { minX, minY, maxX, maxY } = boundary;
+        shape = {
+            type: "pencil",
+            points: this.points,
+            x: minX,
+            y: minY,
+            width : maxX-minX,
+            height: maxY-minY
+        }
+        this.points = [];
     } else if (this.currentTool == "arrow") {
       shape = {
         type: "arrow",
@@ -665,6 +823,17 @@ export class Game {
             canvasY
         );
         
+        this.elements[this.selectedElementIndex] = updatedElement;
+        this.redraw();
+        return;
+    }
+
+    if(this.isResizing && this.selectedElementIndex !== null) {
+        const updatedElement = this.applyResizeToElement(this.elements[this.selectedElementIndex]!, 
+            canvasX, 
+            canvasY,
+            this.resizeHandle!
+        );
         this.elements[this.selectedElementIndex] = updatedElement;
         this.redraw();
         return;
@@ -773,10 +942,10 @@ export class Game {
         case "circle":
           this.ctx?.beginPath();
           this.ctx?.ellipse(
-            element.centerX,
-            element.centerY,
-            Math.abs(element.radius.x),
-            Math.abs(element.radius.y),
+            element.x + element.width/2,
+            element.y + element.height / 2,
+            element.width / 2,
+            element.height / 2,
             0,
             0,
             2 * Math.PI,

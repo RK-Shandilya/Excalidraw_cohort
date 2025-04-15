@@ -85,11 +85,22 @@ export class Game {
     event.stopPropagation();
     event.preventDefault();
 
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    const canvasX = (mouseX - this.panOffset.x) / this.zoom;
+    const canvasY = (mouseY - this.panOffset.y) / this.zoom;
+
     if(event.deltaY < 0) {
         this.zoom = Math.min(this.maxZoom, this.zoom*1.1);
     } else {
         this.zoom = Math.max(this.minZoom, this.zoom / 1.1);
     }
+
+    this.panOffset.x = mouseX - (canvasX * this.zoom);
+    this.panOffset.y = mouseY - (canvasY * this.zoom);
+
     this.redraw();
   }
 

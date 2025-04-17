@@ -229,7 +229,7 @@ export class Game {
     
     this.ctx.strokeStyle = "#1E90FF";
     this.ctx.lineWidth = 2;
-
+    this.ctx.setLineDash([]);
     const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
         
     switch (element.type) {
@@ -459,7 +459,7 @@ export class Game {
     textInput.style.overflow = "hidden";
     textInput.style.whiteSpace = "pre-wrap";
     textInput.style.zIndex = "1000";
-    
+    textInput.style.textAlign = element.textAlign || "left";
     textInput.innerText = element.content || "";
     
     textInput.focus();
@@ -1359,20 +1359,26 @@ private handleMouseDown = (event: MouseEvent) => {
             this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
             this.ctx.fillStyle = element.fillColor || element.strokeColor || "#fff";
             
-            if (element.textAlign) {
-              this.ctx.textAlign = element.textAlign as CanvasTextAlign;
-            }
-            
             const lines = this.getTextLines(element.content || "", element.width!);
             for (let i = 0; i < lines.length; i++) {
+              let xPos = element.x!;
+              
+              if (element.textAlign === "center") {
+                const lineWidth = this.ctx.measureText(lines[i]!).width;
+                xPos = element.x! + (element.width! - lineWidth) / 2;
+              } else if (element.textAlign === "right") {
+                const lineWidth = this.ctx.measureText(lines[i]!).width;
+                xPos = element.x! + element.width! - lineWidth;
+              }
+              
               this.ctx.fillText(
                 lines[i]!, 
-                element.x!, 
+                xPos, 
                 element.y! + (i + 1) * (element.fontSize! * 1.2)
               );
             }
-          }
-        break;
+        }
+      break;
       }
       
       this.ctx!.globalAlpha = 1.0;

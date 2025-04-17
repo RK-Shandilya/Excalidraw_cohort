@@ -33,6 +33,15 @@ export class Game {
   private dragStartY: number = 0;
   private elementStartPosition: any = null;
 
+  private isTextEditing: boolean = false;
+  private textEditingElement: number | null = null;
+  private textInput: HTMLDivElement | null = null;
+  private defaultFontSize: number = 20;
+  private defaultFontFamily: string = "sans-serif";
+  private lastClickTime: number = 0;
+
+  private selectionChangeCallbacks: ((element: Shape | null) => void)[] = [];
+
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
     this.roomId = roomId;
     this.canvas = canvas;
@@ -110,6 +119,7 @@ export class Game {
     switch(element.type) {
         case "rect":
         case "circle":
+        case "text":
             minX = element.x;
             minY = element.y;
             maxX = element.width + element.x;
@@ -145,6 +155,15 @@ export class Game {
   }
 
   private cloneElementPosition = (element: Shape): any => {
+    if (element.type === "text") {
+        return { 
+          x: element.x, 
+          y: element.y, 
+          width: element.width, 
+          height: element.height,
+          fontSize: element.fontSize
+        };
+    }
     switch (element.type) {
       case "rect":
       case "circle":
@@ -170,16 +189,16 @@ export class Game {
 
   private drawResizeHandles = (element: Shape) => {
     if(!this.ctx) return;
-    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
     const handleSize = this.resizeHandleSize;
   
     this.ctx.save();
     this.ctx.fillStyle = "#1E90FF";
-  
+    const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
     switch (element.type) {
       case "rect":
       case "circle":
       case "pencil":
+      case "text":
         this.ctx.fillRect(minX - handleSize / 2, minY - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(maxX - handleSize / 2, minY - handleSize / 2, handleSize, handleSize); 
         this.ctx.fillRect(minX - handleSize / 2, maxY - handleSize / 2, handleSize, handleSize); 
@@ -196,35 +215,39 @@ export class Game {
         this.ctx.fill();
         break;
     }
-    
     this.ctx.restore();
   }
   
   private drawSelectionBoundary = (element: Shape) => {
     if (!this.ctx) return;
-    
+    if (this.isTextEditing && 
+        this.textEditingElement !== null && 
+        this.elements[this.textEditingElement] === element) {
+      return;
+    }
     this.ctx.save();
     
     this.ctx.strokeStyle = "#1E90FF";
     this.ctx.lineWidth = 2;
 
     const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
-    
+        
     switch (element.type) {
-        case "rect":
-        case "circle":
-        case "pencil":
-            this.ctx.strokeRect(minX - 5, minY - 5, maxX - minX + 10, maxY - minY + 10);
-            break;
-    }
-    
-    this.ctx.restore();
-    if (this.currentTool === "selection") {
+      case "rect":
+      case "circle":
+      case "pencil":
+      case "text":
+        this.ctx.strokeRect(minX - 5, minY - 5, maxX - minX + 10, maxY - minY + 10);
+        break;
+      }
+      
+      this.ctx.restore();
+      if (this.currentTool === "selection") {
         this.drawResizeHandles(element);
+      }
     }
-  }
 
-  private isPointOnSelectionBoundary = (element: Shape, x: number, y: number) => {
+  public isPointOnSelectionBoundary = (element: Shape, x: number, y: number) => {
     const { minX, minY, maxX, maxY } = this.getElementBoundary(element);
     const handleSize = this.resizeHandleSize;
 
@@ -232,6 +255,7 @@ export class Game {
         case "circle":
         case "rect":
         case "pencil":
+        case "text":
             if(Math.abs(x-minX)<=handleSize/2 && Math.abs(y-minY)<=handleSize/2) {
                 return { onBoundary: true, handlePosition: "top-left" };
             } 
@@ -261,6 +285,7 @@ export class Game {
     if (!this.elementStartPosition) return element;
     
     const updatedElement = { ...element };
+    const original = this.elementStartPosition;
     
     if (updatedElement.type === "line" || updatedElement.type === "arrow") {
       if (handle === "start") {
@@ -272,161 +297,421 @@ export class Game {
       }
     }
     
-    const original = this.elementStartPosition;
-
     let x = original.x;
     let y = original.y;
     let width = original.width;
     let height = original.height;
     
-    if (updatedElement.type == "rect" || updatedElement.type == "circle" || updatedElement.type == "pencil") {
-        // movement is based on edges
-        if (handle.includes("left")) {
-          const newX = currentX;
-          width = original.x + original.width - newX;
-          x = newX;
-        } else if (handle.includes("right")) {
-          width = currentX - original.x;
-        }
-        
-        if (handle.includes("top")) {
-          const newY = currentY;
-          height = original.y + original.height - newY;
-          y = newY;
-        } else if (handle.includes("bottom")) {
-          height = currentY - original.y;
-        }
-        
-        if (width < 0) {
-          x = x + width;
-          width = Math.abs(width);
-        }
-        
-        if (height < 0) {
-          y = y + height;
-          height = Math.abs(height);
-        }
-        
-        updatedElement.x = x;
-        updatedElement.y = y;
-        updatedElement.width = width;
-        updatedElement.height = height;
-        
-        if(updatedElement.type == "pencil") {
-          const newPoints = original.points.map((point: Point) => {
-            const relX = original.width === 0 ? 0 : (point.x - original.x) / original.width;
-            const relY = original.height === 0 ? 0 : (point.y - original.y) / original.height;
-            
-            return {
-              x: x + (relX * width),
-              y: y + (relY * height)
-            };
-          });
-          
-          updatedElement.points = newPoints;
-        }
+    if (handle.includes("left")) {
+      const newX = currentX;
+      width = original.x + original.width - newX;
+      x = newX;
+    } else if (handle.includes("right")) {
+      width = currentX - original.x;
     }
+    
+    if (handle.includes("top")) {
+      const newY = currentY;
+      height = original.y + original.height - newY;
+      y = newY;
+    } else if (handle.includes("bottom")) {
+      height = currentY - original.y;
+    }
+    
+    if (width < 0) {
+      x = x + width;
+      width = Math.abs(width);
+    }
+    
+    if (height < 0) {
+      y = y + height;
+      height = Math.abs(height);
+    }
+    
+    width = Math.max(width, 20);
+    if (updatedElement.type != "line" && updatedElement.type != "arrow") {
+      updatedElement.x = x;
+      updatedElement.y = y;
+      updatedElement.width = width;
+      if (updatedElement.type != "text") updatedElement.height = height;
+    }
+    
+    if (updatedElement.type === "text") {
+      if (handle.includes("right") || handle.includes("left")) {
+        updatedElement.maxWidth = width;
+      }
+      
+      if (handle === "top-left" || handle === "top-right" || 
+          handle === "bottom-left" || handle === "bottom-right") {
+        const heightRatio = height / original.height;
+        updatedElement.fontSize = Math.max(10, Math.round(original.fontSize * heightRatio));
+      }
+      
+      if (this.ctx && updatedElement.content) {
+        updatedElement.height = this.calculateTextHeight(
+          updatedElement.content,
+          updatedElement.width,
+          updatedElement.fontSize!
+        );
+      }
+    }
+    
+    if (updatedElement.type === "pencil" && updatedElement.points) {
+      const newPoints = original.points.map((point: Point) => {
+        const relX = original.width === 0 ? 0 : (point.x - original.x) / original.width;
+        const relY = original.height === 0 ? 0 : (point.y - original.y) / original.height;
+        
+        return {
+          x: x + (relX * width),
+          y: y + (relY * height)
+        };
+      });
+      
+      updatedElement.points = newPoints;
+    }
+    
     return updatedElement;
-}
+  }
 
-  private handleMouseDown = (event: MouseEvent) => {
+  private getTextLines(text: string, maxWidth: number): string[] {
+    if (!this.ctx || !text) return [];
+    
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = words[0] || "";
+    
+    for (let i = 1; i < words.length; i++) {
+      const word = words[i]!;
+      const testLine = currentLine + " " + word;
+      const metrics = this.ctx.measureText(testLine);
+      
+      if (metrics.width < maxWidth) {
+        currentLine = testLine;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    
+    lines.push(currentLine);
+    return lines;
+  }
+
+  private calculateTextHeight(text: string, width: number, fontSize: number): number {
+    if (!this.ctx || !text) return fontSize * 1.2;
+    
+    const lines = this.getTextLines(text, width);
+    return lines.length * fontSize * 1.2;
+  }
+
+  private initTextEditing(elementIndex: number): void {
+    if (this.isTextEditing && this.textEditingElement !== null && this.textInput) {
+      this.finishTextEditing();
+    }
+  
+    const element = this.elements[elementIndex]!;
+    if (element.type !== "text") return;
+    
+    if (element.width === 0) {
+      element.width = element.maxWidth || 400;
+    }
+    
+    this.isTextEditing = true;
+    this.textEditingElement = elementIndex;
+    
+    if (!this.textInput) {
+      const editable = document.createElement("div");
+      this.textInput = editable;
+      document.body.appendChild(editable);
+      
+      editable.addEventListener("input", this.handleTextInput);
+      editable.addEventListener("blur", this.finishTextEditing);
+      editable.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          this.finishTextEditing();
+        }
+      });
+    }
+  
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = (element.x * this.zoom) + this.panOffset.x + rect.left;
+    const screenY = (element.y * this.zoom) + this.panOffset.y + rect.top;
+  
+    const textInput = this.textInput;
+    textInput.contentEditable = "true";
+    textInput.style.position = "absolute";
+    textInput.style.left = `${screenX}px`;
+    textInput.style.top = `${screenY}px`;
+    textInput.style.minWidth = `20px`; 
+    textInput.style.maxWidth = `${(element.maxWidth || 400) * this.zoom}px`;
+    textInput.style.width = `${element.width * this.zoom}px`;
+    textInput.style.minHeight = `${element.fontSize! * 1.2 * this.zoom}px`;
+    textInput.style.padding = "0px";
+    textInput.style.margin = "0px";
+    textInput.style.background = "transparent";
+    textInput.style.color = "#fff";
+    textInput.style.fontFamily = element.fontFamily!;
+    textInput.style.fontSize = `${element.fontSize! * this.zoom}px`;
+    textInput.style.lineHeight = "1.2";
+    textInput.style.outline = "none";
+    textInput.style.border = "none";
+    textInput.style.caretColor = "#fff";
+    textInput.style.overflow = "hidden";
+    textInput.style.whiteSpace = "pre-wrap";
+    textInput.style.zIndex = "1000";
+    
+    textInput.innerText = element.content || "";
+    
+    textInput.focus();
+    
+    const range = document.createRange();
+    range.selectNodeContents(textInput);
+    range.collapse(false);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    
+    this.handleTextInput();
+    this.redraw();
+  }
+
+  private handleTextInput = (): void => {
+    if (!this.textInput || this.textEditingElement === null) return;
+    
+    const element = this.elements[this.textEditingElement];
+    if (element && element.type === "text") {
+      element.content = this.textInput.innerText;
+      
+      if (this.ctx) {
+        this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
+        
+        const maxWidth = element.maxWidth || 400;
+        const lines = this.getTextLines(element.content, maxWidth);
+        let maxLineWidth = 0;
+        
+        for (const line of lines) {
+          const metrics = this.ctx.measureText(line);
+          maxLineWidth = Math.max(maxLineWidth, metrics.width);
+        }
+        
+        element.width = Math.min(maxLineWidth + 10, maxWidth);
+        
+        const textHeight = this.calculateTextHeight(
+          element.content, 
+          element.width, 
+          element.fontSize!
+        );
+        element.height = textHeight;
+        
+        this.textInput.style.width = `${element.width * this.zoom}px`;
+        this.textInput.style.minHeight = `${element.height * this.zoom}px`;
+      }
+    }
+  };
+
+  private finishTextEditing = (): void => {
+    if (this.textEditingElement === null || !this.textInput) return;
+    
+    const element = this.elements[this.textEditingElement]!;
+    const inputToRemove = this.textInput;
+    
+    if (element && element.type === "text") {
+      element.content = this.textInput.innerText;
+      
+      if (!element.content || element.content.trim() === "") {
+        this.elements.splice(this.textEditingElement, 1);
+        this.selectedElementIndex = null;
+        this.notifySelectionChange();
+      } else {
+        if (this.ctx) {
+          this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
+          
+          const maxWidth = element.maxWidth || 400;
+          const lines = this.getTextLines(element.content, maxWidth);
+          let maxLineWidth = 0;
+          
+          for (const line of lines) {
+            const metrics = this.ctx.measureText(line);
+            maxLineWidth = Math.max(maxLineWidth, metrics.width);
+          }
+          
+          element.width = Math.min(maxLineWidth + 10, maxWidth);
+        }
+        
+        const textHeight = this.calculateTextHeight(
+          element.content, 
+          element.width!, 
+          element.fontSize!
+        );
+        element.height = textHeight;
+        
+        this.socket.send(
+          JSON.stringify({
+            type: "draw",
+            drawing: element,
+            roomId: this.roomId,
+          })
+        );
+      }
+    }
+    
+    this.textInput = null;
+    this.isTextEditing = false;
+    this.textEditingElement = null;
+    
+    try {
+      if (inputToRemove && document.body.contains(inputToRemove)) {
+        document.body.removeChild(inputToRemove);
+      }
+    } catch (error) {
+      console.warn("Text input element already removed:", error);
+    }
+    
+    this.redraw();
+  };
+
+
+private handleMouseDown = (event: MouseEvent) => {
     event.stopPropagation();
     event.preventDefault();
-    this.isDrawing = true;
-
+  
     if (this.currentTool == "pan") {
-        this.isPanning = true;
-        this.panStart.x = event.clientX;
-        this.panStart.y = event.clientY;
-        document.body.style.cursor = "grabbing";
-        return;
+      this.isPanning = true;
+      this.panStart.x = event.clientX;
+      this.panStart.y = event.clientY;
+      document.body.style.cursor = "grabbing";
+      return;
     }
-    const result = this.screenToCanvas(event.clientX,event.clientY);
+    
+    const result = this.screenToCanvas(event.clientX, event.clientY);
     const canvasX = result.clientX;
     const canvasY = result.clientY;
+    
+    if (this.isTextEditing) {
+      this.finishTextEditing();
+      return;
+    }
+  
     this.redraw();
-    if (
-      ["line", "rect", "circle", "pencil", "arrow"].includes(this.currentTool)
-    ) {
+    let clickedOnElement = false;
+    
+    if (this.currentTool === "text") {
+      const textElement = this.createTextElement(canvasX, canvasY);
+      this.elements.push(textElement);
+      const index = this.elements.length - 1;
+      this.selectedElementIndex = index;
+      this.initTextEditing(index);
+      this.notifySelectionChange(); 
+      return;
+    }
+  
+    if (["line", "rect", "circle", "pencil", "arrow"].includes(this.currentTool)) {
       this.startX = canvasX;
       this.startY = canvasY;
+      this.isDrawing = true;
     } else if (this.currentTool == "eraser") {
-        this.isErasing = true;
-        this.createEraserCursor(canvasX, canvasY);
+      this.isErasing = true;
+      this.createEraserCursor(canvasX, canvasY);
+      this.selectedElementIndex = null;
+      this.notifySelectionChange();
     } else if (this.currentTool == "selection") {
-        if(this.selectedElementIndex !== null) {
-            const element = this.elements[this.selectedElementIndex];
-            const {onBoundary, handlePosition} = this.isPointOnSelectionBoundary(element!, canvasX, canvasY);
-
-            if(onBoundary) {
-                this.isResizing = true;
-                this.resizeHandle = handlePosition;
+      if (this.selectedElementIndex !== null) {
+        const element = this.elements[this.selectedElementIndex]!;
+  
+        if (element && element.type === "text" && this.isPointInsideElement(element, canvasX, canvasY)) {
+          clickedOnElement = true;
+          const now = Date.now();
+          if (this.lastClickTime && now - this.lastClickTime < 300) {
+            this.initTextEditing(this.selectedElementIndex);
+            this.lastClickTime = 0;
+            return;
+          }
+          this.lastClickTime = now;
+        }
+        
+        const {onBoundary, handlePosition} = this.isPointOnSelectionBoundary(element!, canvasX, canvasY);
+        if (onBoundary) {
+          this.isResizing = true;
+          this.resizeHandle = handlePosition;
+          this.dragStartX = canvasX;
+          this.dragStartY = canvasY;
+          this.elementStartPosition = this.cloneElementPosition(element!);
+          
+          switch (handlePosition) {
+            case "top-left":
+            case "bottom-right":
+              document.body.style.cursor = "nwse-resize";
+              break;
+            case "top-right":
+            case "bottom-left":
+              document.body.style.cursor = "nesw-resize";
+              break;
+            case "start":
+            case "end":
+              document.body.style.cursor = "pointer";
+          }
+          return;
+        }
+        
+        if (this.isPointInsideElement(element, canvasX, canvasY)) {
+          switch (element.type) {
+            case "arrow":
+            case "line":
+              if (this.isLineNearPoint(
+                element.startingPoint.x, element.startingPoint.y,
+                element.endingPoint.x, element.endingPoint.y,
+                canvasX, canvasY, 10)) {
+                this.isDragging = true;
                 this.dragStartX = canvasX;
                 this.dragStartY = canvasY;
-                this.elementStartPosition = this.cloneElementPosition(element!);
-                switch (handlePosition) {
-                    case "top-left":
-                    case "bottom-right":
-                      document.body.style.cursor = "nwse-resize";
-                      break;
-                    case "top-right":
-                    case "bottom-left":
-                      document.body.style.cursor = "nesw-resize";
-                      break;
-                    case "start":
-                    case "end":
-                        document.body.style.cursor = "pointer";
-                  }
-                  return;
-            }
-
-            switch (element?.type) {
-                case "arrow":
-                case "line":
-                    if(this.isLineNearPoint(element.startingPoint.x,element.startingPoint.y, element.endingPoint.x, element.endingPoint.y, canvasX, canvasY ,10)){
-                        this.isDragging = true;
-                        this.dragStartX = canvasX;
-                        this.dragStartY = canvasY;
-                        this.elementStartPosition = this.cloneElementPosition(element!);
-                        document.body.style.cursor = "move";
-                    }
-                break;
-                case "circle":
-                case "pencil":
-                case "rect":
-                    if (this.isPointInsideElement(element!, canvasX, canvasY)) {                    
-                        this.isDragging = true;
-                        this.dragStartX = canvasX;
-                        this.dragStartY = canvasY;
-                        this.elementStartPosition = this.cloneElementPosition(element!);
-                        document.body.style.cursor = "move";
-                    }
-                break;
-            }
-            return;
-        } else {
-            let foundElement = false;
-            if(!foundElement && this.elements.length > 0){
-                for (let i = this.elements.length - 1; i >= 0; i--) {
-                    const element = this.elements[i];
-                    if (this.isElementUnderEraser(element!, canvasX, canvasY, 10)) {
-                        this.selectedElementIndex = i;
-                        foundElement = true;
-                        break;
-                    }
-                }
-            }
-        
-            if (!foundElement) {
-                this.selectedElementIndex = null;
-            }
-            this.redraw();
-            return;
+                this.elementStartPosition = this.cloneElementPosition(element);
+                document.body.style.cursor = "move";
+              }
+              break;
+            case "circle":
+            case "pencil":
+            case "rect":
+            case "text":
+              this.isDragging = true;
+              this.dragStartX = canvasX;
+              this.dragStartY = canvasY;
+              this.elementStartPosition = this.cloneElementPosition(element);
+              document.body.style.cursor = "move";
+              break;
+          }
+          return;
         }
-    } else {
-        this.isDrawing = false;
+        if (this.isDragging) return;
+      }
+      
+      if (!clickedOnElement) {
+        const oldSelectedIndex = this.selectedElementIndex;
+        this.selectedElementIndex = null;
+        this.notifySelectionChange()
+        for (let i = this.elements.length - 1; i >= 0; i--) {
+          const element = this.elements[i];
+          if (element && this.isElementUnderEraser(element, canvasX, canvasY, 10)) {
+            clickedOnElement = true;
+            this.selectedElementIndex = i;
+            this.notifySelectionChange();
+            break;
+          }
+          if (element && element.type == "text" && this.isPointInsideElement(element, canvasX, canvasY)) {
+            this.selectedElementIndex = i;
+            this.notifySelectionChange();
+            clickedOnElement = true;
+            break;
+          }
+        }
+        
+        if (oldSelectedIndex !== this.selectedElementIndex) {
+          this.notifySelectionChange();
+        }
+      }
     }
-    this.selectedElementIndex = null;
+    this.redraw();
   };
 
   private createEraserCursor = (x: number, y: number) => {
@@ -467,6 +752,12 @@ export class Game {
     y: number,
     radius: number
   ): boolean {
+    if (element.type === "text") {
+        return x >= element.x! - radius && 
+               x <= element.x! + element.width! + radius && 
+               y >= element.y! - radius && 
+               y <= element.y! + element.height! + radius;
+    }
     switch (element.type) {
       case "line":
         return this.isLineNearPoint(
@@ -637,6 +928,13 @@ export class Game {
     const deltaY = currentY - this.dragStartY;
     
     const updatedElement = { ...element };
+
+    if (updatedElement.type === "text") {
+        updatedElement.x = this.elementStartPosition.x + deltaX;
+        updatedElement.y = this.elementStartPosition.y + deltaY;
+        return updatedElement;
+    }
+
     switch (updatedElement.type) {
         case "rect":
         case "circle":
@@ -668,14 +966,13 @@ export class Game {
   }
 
   private handleMouseUp = (event: MouseEvent) => {
-    event.stopPropagation();
     event.preventDefault();
-    if (!this.isDrawing) return;
 
+    if (!this.isDrawing && !this.isPanning && !this.isErasing && this.isDragging && this.isResizing)   return;
+    
     if(this.currentTool == "pan" && this.isPanning) {
         this.isPanning = false;
         document.body.style.cursor = "default";
-        this.isDrawing = false;
         console.log("panning offset", this.panOffset);
         this.redraw();
         return;
@@ -785,6 +1082,7 @@ export class Game {
     } else if(this.currentTool == "eraser" && this.isErasing) {
         this.isErasing = false;
         this.selectedElementIndex = null;
+        this.notifySelectionChange();
         document.body.style.cursor = "default";
     }
     if(isValidDrag) {
@@ -797,17 +1095,21 @@ export class Game {
                     roomId: this.roomId,
                 })
             );
+        }
     }
-    }
-    this.isDrawing = false;
+    this.resetInteractionStates();
     this.redraw();
   };
 
   private handleMouseMove = (event: MouseEvent) => {
+    if (!this.ctx) return;
     event.stopPropagation();
     event.preventDefault();
-    if (!this.isDrawing) return;
-    if (!this.ctx) return;
+    this.redraw();
+    if(this.isTextEditing) {
+        this.redraw();
+        return;
+    }
 
     if(this.currentTool == "pan" && this.isPanning) {
         const deltaX = event.clientX - this.panStart.x;
@@ -850,21 +1152,20 @@ export class Game {
         return;
     }
     
-    this.redraw();
-    if (this.currentTool == "line") {
+    if (this.currentTool == "line" && this.isDrawing) {
       this.ctx.beginPath();
       this.ctx.moveTo(this.startX, this.startY);
       this.ctx.lineTo(canvasX, canvasY);
       this.ctx.strokeStyle = "#fff";
       this.ctx.stroke();
-    } else if (this.currentTool == "rect") {
+    } else if (this.currentTool == "rect" && this.isDrawing) {
       this.ctx?.strokeRect(
         this.startX,
         this.startY,
         canvasX - this.startX,
         canvasY - this.startY
       );
-    } else if (this.currentTool == "circle") {
+    } else if (this.currentTool == "circle" && this.isDrawing) {
       this.ctx.beginPath();
       this.ctx.ellipse(
         (canvasX - this.startX) / 2 + this.startX,
@@ -877,14 +1178,14 @@ export class Game {
         true
       );
       this.ctx.stroke();
-    } else if (this.currentTool == "pencil") {
+    } else if (this.currentTool == "pencil" && this.isDrawing) {
       this.points.push({ x: canvasX, y: canvasY });
       this.ctx.beginPath();
       for (const point of this.points) {
         this.ctx.lineTo(point.x, point.y);
         this.ctx.stroke();
       }
-    } else if (this.currentTool == "arrow") {
+    } else if (this.currentTool == "arrow" && this.isDrawing) {
       const dx = canvasX - this.startX;
       const dy = canvasY - this.startY;
       const angle = Math.atan2(dy, dx);
@@ -906,35 +1207,70 @@ export class Game {
         );
         this.ctx.stroke();
       }
-    } else if (this.currentTool == "eraser" && this.isErasing) {
+    } else if (this.isErasing && this.currentTool == "eraser") {
         this.createEraserCursor(canvasX, canvasY);
         this.eraseAtPosition(canvasX, canvasY);
     }
   };
 
+  private resetInteractionStates() {
+    this.isDrawing = false;
+    this.isPanning = false;
+    this.isResizing = false;
+    this.isDragging = false;
+    this.isErasing = false;
+    this.resizeHandle = undefined;
+    document.body.style.cursor = "default";
+  }
 
   public setTool = (tool: Tool) => {
-    this.selectedElementIndex = null;
-    this.currentTool = tool;
-    if (tool !== "eraser") {
-        document.body.style.cursor = "default";
+    if (this.isTextEditing) {
+      this.finishTextEditing();
     }
+    
+    this.resetInteractionStates();
+    this.currentTool = tool;
+    
+    if (tool !== "selection") {
+      this.selectedElementIndex = null;
+      this.notifySelectionChange();
+    }
+    
+    this.redraw();
   };
 
-  
+  private createTextElement(x: number, y: number): Shape {
+    return {
+      type: "text",
+      x,
+      y,
+      width: 0,
+      height: this.defaultFontSize * 1.2,
+      content: "",
+      fontSize: this.defaultFontSize,
+      fontFamily: this.defaultFontFamily,
+      maxWidth: 400
+    };
+  }
 
-  private redraw = () => {
-    if (!this.ctx || !this.canvas) return;
+  public redraw = () => {
+    if (!this.ctx || !this.canvas) {
+        return;
+    }
+
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.strokeStyle = "#fff";
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([]);
+    this.ctx.globalAlpha = 1.0;
 
-    this.ctx.setTransform(this.zoom,0,0,this.zoom,this.panOffset.x, this.panOffset.y);
+    this.ctx.setTransform(this.zoom, 0, 0, this.zoom, this.panOffset.x, this.panOffset.y);
 
     this.elements.forEach((element: Shape) => {
+      this.applyElementStyles(element);
+
       switch (element.type) {
         case "line":
           this.ctx?.beginPath();
@@ -943,6 +1279,14 @@ export class Game {
           this.ctx?.stroke();
           break;
         case "rect":
+          if (element.fillColor) {
+            this.ctx!.fillRect(
+              element.x,
+              element.y,
+              element.width,
+              element.height
+            );
+          }
           this.ctx?.strokeRect(
             element.x,
             element.y,
@@ -954,14 +1298,17 @@ export class Game {
           this.ctx?.beginPath();
           this.ctx?.ellipse(
             element.x + element.width/2,
-            element.y + element.height / 2,
-            element.width / 2,
-            element.height / 2,
+            element.y + element.height/2,
+            element.width/2,
+            element.height/2,
             0,
             0,
             2 * Math.PI,
             true
           );
+          if (element.fillColor) {
+            this.ctx!.fill();
+          }
           this.ctx?.stroke();
           break;
         case "pencil":
@@ -970,8 +1317,8 @@ export class Game {
             this.ctx?.moveTo(element.points[0]!.x, element.points[0]!.y);
             for (const point of element.points) {
               this.ctx?.lineTo(point.x, point.y);
-              this.ctx?.stroke();
             }
+            this.ctx?.stroke();
           }
           break;
         case "arrow": {
@@ -1002,12 +1349,79 @@ export class Game {
           }
         }
         break;
+        case "text":
+        if (this.ctx) {
+            if (this.isTextEditing && this.textEditingElement !== null && 
+                element == this.elements[this.textEditingElement!]) {
+              break;
+            }
+            
+            this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
+            this.ctx.fillStyle = element.fillColor || element.strokeColor || "#fff";
+            
+            if (element.textAlign) {
+              this.ctx.textAlign = element.textAlign as CanvasTextAlign;
+            }
+            
+            const lines = this.getTextLines(element.content || "", element.width!);
+            for (let i = 0; i < lines.length; i++) {
+              this.ctx.fillText(
+                lines[i]!, 
+                element.x!, 
+                element.y! + (i + 1) * (element.fontSize! * 1.2)
+              );
+            }
+          }
+        break;
       }
+      
+      this.ctx!.globalAlpha = 1.0;
     });
+    
     if (this.selectedElementIndex !== null && this.elements[this.selectedElementIndex]) {
         this.drawSelectionBoundary(this.elements[this.selectedElementIndex]!);   
     }
-  };
+};
+
+private applyElementStyles(element: Shape) {
+    if (!this.ctx) return;
+    
+    this.ctx.strokeStyle = "#fff";
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([]);
+    this.ctx.globalAlpha = 1.0;
+    this.ctx.fillStyle = "#fff";
+    
+    if (element.strokeColor) {
+        this.ctx.strokeStyle = element.strokeColor;
+    }
+    
+    if (element.fillColor) {
+        this.ctx.fillStyle = element.fillColor;
+    }
+    
+    if (element.strokeWidth) {
+        this.ctx.lineWidth = element.strokeWidth;
+    }
+    
+    if (element.opacity !== undefined) {
+        this.ctx.globalAlpha = element.opacity;
+    }
+    
+    if (element.strokeStyle) {
+        switch (element.strokeStyle) {
+            case "solid":
+                this.ctx.setLineDash([]);
+                break;
+            case "dashed":
+                this.ctx.setLineDash([10, 5]);
+                break;
+            case "dotted":
+                this.ctx.setLineDash([2, 2]);
+                break;
+        }
+    }
+}
 
   private screenToCanvas(screenX: number, screenY: number): {clientX: number, clientY: number} {
     const rect = this.canvas.getBoundingClientRect();
@@ -1022,5 +1436,117 @@ export class Game {
     this.canvas.removeEventListener("mousemove", this.handleMouseMove);
     this.canvas.removeEventListener("mouseup", this.handleMouseUp);
     this.canvas.removeEventListener("wheel", this.handleWheel);
+
+    if (this.isTextEditing && this.textInput) {
+        document.body.removeChild(this.textInput);
+        this.textInput = null;
+    }
   };
+
+  public onSelectionChange = (callback: (element: Shape | null) => void) => {
+    this.selectionChangeCallbacks.push(callback);
+    return () => {
+        this.selectionChangeCallbacks = this.selectionChangeCallbacks.filter(cb => cb !== callback);
+    };
+  };
+
+  private notifySelectionChange() {
+    const selectedElement = this.selectedElementIndex !== null 
+        ? { ...this.elements[this.selectedElementIndex] }
+        : null;
+    
+    this.selectionChangeCallbacks.forEach(callback => {
+        callback(selectedElement as Shape);
+    });
+  }
+
+  private sendUpdateToWS = () => {
+    this.socket.send(
+        JSON.stringify({
+          type: "update",
+          index: this.selectedElementIndex,
+          updatedElement: this.elements[this.selectedElementIndex!],
+          roomId: this.roomId,
+        })
+      );
+  }
+
+  public setFontSize = (size: number) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex];
+    if(element?.type =="text") {
+        element.fontSize = size;
+        this.sendUpdateToWS();
+        this.notifySelectionChange();
+        this.redraw();
+    }
+  }
+
+  public setFontFamily = (family: string) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex];
+    if(element?.type =="text") {
+        element.fontFamily = family;
+        this.sendUpdateToWS();
+        this.notifySelectionChange();
+        this.redraw();
+    }
+  }
+
+  public setTextAlign = (align: string) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex];
+    if(element?.type =="text") {
+        element.textAlign = align;
+        this.sendUpdateToWS();
+        this.notifySelectionChange();
+        this.redraw();
+    }
+  }
+
+  public setStrokeColor = (color: string) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex]!;
+    element.strokeColor = color;
+    this.sendUpdateToWS();
+    this.notifySelectionChange();
+    this.redraw();
+  }
+
+  public setFillColor = (color: string) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex]!;
+    element.fillColor = color;
+    this.sendUpdateToWS();
+    this.notifySelectionChange();
+    this.redraw();
+  }
+
+  public setStrokeWidth = (width: number) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex]!;
+    element.strokeWidth = width;
+    this.sendUpdateToWS();
+    this.notifySelectionChange();
+    this.redraw();
+  }
+
+  public setOpacity = (opacity: number) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex]!;
+    element.opacity = opacity;
+    this.sendUpdateToWS();
+    this.notifySelectionChange();
+    this.redraw();
+  }
+
+  public setStrokeStyle = (stroke: string) => {
+    if(this.selectedElementIndex == null) return;
+    const element = this.elements[this.selectedElementIndex]!;
+    element.strokeStyle = stroke;
+    this.sendUpdateToWS();
+    this.notifySelectionChange();
+    this.redraw();
+  }
+
 }

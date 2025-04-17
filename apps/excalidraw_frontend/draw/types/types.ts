@@ -14,23 +14,46 @@ export type Shape = {
         y: number;
         width: number;
         height: number;
+        rotation?: number;
+        strokeStyle?: string;
+        strokeColor? : string;
+        strokeWidth?: number;
+        fillColor?: string;
+        opacity?: number;
+    }
+    | {
+      type: "circle",
+      x: number;
+        y: number;
+        width: number;
+        height: number;
+        rotation?: number;
+        strokeStyle?: string;
+        strokeColor? : string;
+        strokeWidth?: number;
+        fillColor?: string;
+        opacity?: number;
     }
   | {
         type: "line";
         startingPoint: Point;
         endingPoint: Point;
+        strokeStyle?: string;
+        strokeColor? : string;
+        strokeWidth?: number;
+        opacity?: number;
+        fillColor?: string
     }
   | {
-        type: "arrow";
-        startingPoint: Point;
-        endingPoint: Point;
-    }
-  | {
-        type: "text";
-        text: string;
-        x: number;
-        y: number;
-    }
+      type: "arrow"
+      startingPoint: Point;
+      endingPoint: Point;
+      strokeStyle?: string;
+        strokeColor? : string;
+        strokeWidth?: number;
+        opacity?: number;
+        fillColor?: string
+  }
   | {
         type: "pencil";
         points: Point[];
@@ -38,5 +61,28 @@ export type Shape = {
         y: number;
         width: number;
         height: number;
+        rotation?: number;
+        strokeStyle?: string;
+        strokeColor? : string;
+        strokeWidth?: number;
+        opacity?: number;
+        fillColor?: string
     }
+  | {
+      type: "text";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      content: string;
+      fontSize: number;
+      fontFamily: string;
+      maxWidth: number
+      strokeStyle?: string;
+      strokeColor? : string;
+      strokeWidth?: number;
+      opacity?: number;
+      fillColor?: string
+      textAlign? :string;
+  }
 );

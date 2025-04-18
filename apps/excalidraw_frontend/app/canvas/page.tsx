@@ -1,27 +1,60 @@
 "use client";
 import { useRouter } from 'next/navigation';
-import React from 'react'
+import React, { useState } from 'react';
 
 const Room = () => {
     const router = useRouter();
-    const [roomId, setRoomId] = React.useState('');
-  return (
-    <div className='flex justify-center items-center w-screen h-screen bg-gradient-to-b from-cyan-50 to-white'>
-      <div className='w-80 flex flex-col gap-2 justify-center items-center shadow-lg rounded-lg p-4 m-4 '>
-        <input className=' p-2 rounded-md' type="text" placeholder='roomId'
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        />
-        <button className='bg-cyan-600 text-white px-4 py-1 rounded-lg hover:bg-cyan-700 transition-colors'
-        onClick={() => {
-            router.push(`/canvas/${roomId}`);
-        }}
-        >
-            Join Room
-        </button>
-      </div>
-    </div>
-  )
-}
+    const [roomId, setRoomId] = useState("");
 
-export default Room
+    return (
+        <div className="min-h-screen bg-[url('/bg.webp')] flex flex-col items-center justify-center bg-cover bg-center bg-no-repeat bg-fixed overflow-y-hidden">
+            <div className="mb-8 animate-pulse">
+                <div className="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full shadow-lg">
+                    <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
+                    <span className="text-white font-medium text-sm">LIVE COLLABORATION</span>
+                </div>
+            </div>
+
+            <div className="flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                    <div className="p-8 space-y-6">
+                        <div className="text-center">
+                            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-cyan-800 to-cyan-950">
+                                    Join Canvas Room
+                                </span>
+                            </h1>
+                            <p className="text-gray-500">Enter your room ID to start collaborating</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="roomId" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Room ID
+                                </label>
+                                <input 
+                                    id="roomId"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-cyan-500 focus:outline-none transition-all"
+                                    type="text" 
+                                    placeholder="Enter Room ID"
+                                    value={roomId}
+                                    onChange={(e) => setRoomId(e.target.value)}
+                                />
+                            </div>
+
+                            <button 
+                                className="w-full py-3.5 px-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-medium rounded-xl transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
+                                onClick={() => router.push(`/canvas/${roomId}`)}
+                                disabled={!roomId.trim()}
+                            >
+                                Join Room
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default Room;

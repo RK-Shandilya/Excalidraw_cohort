@@ -582,6 +582,7 @@ private handleMouseDown = (event: MouseEvent) => {
       this.panStart.x = event.clientX;
       this.panStart.y = event.clientY;
       document.body.style.cursor = "grabbing";
+      this.redraw();
       return;
     }
     
@@ -604,6 +605,7 @@ private handleMouseDown = (event: MouseEvent) => {
       this.selectedElementIndex = index;
       this.initTextEditing(index);
       this.notifySelectionChange(); 
+      this.redraw();
       return;
     }
   
@@ -612,11 +614,13 @@ private handleMouseDown = (event: MouseEvent) => {
       this.startY = canvasY;
       this.isDrawing = true;
     } else if (this.currentTool == "eraser") {
+      this.redraw();
       this.isErasing = true;
       this.createEraserCursor(canvasX, canvasY);
       this.selectedElementIndex = null;
       this.notifySelectionChange();
     } else if (this.currentTool == "selection") {
+      this.redraw();
       if (this.selectedElementIndex !== null) {
         const element = this.elements[this.selectedElementIndex]!;
   
@@ -719,6 +723,7 @@ private handleMouseDown = (event: MouseEvent) => {
     this.ctx.beginPath();
     this.ctx.arc(x, y, 10, 0, 2 * Math.PI);
     this.ctx.strokeStyle = "#fff";
+    this.ctx.setLineDash([]);
     this.ctx.stroke();
     document.body.style.cursor = "none"
   };
@@ -966,6 +971,7 @@ private handleMouseDown = (event: MouseEvent) => {
   }
 
   private handleMouseUp = (event: MouseEvent) => {
+    event.stopPropagation();
     event.preventDefault();
 
     if (!this.isDrawing && !this.isPanning && !this.isErasing && this.isDragging && this.isResizing)   return;
@@ -973,7 +979,6 @@ private handleMouseDown = (event: MouseEvent) => {
     if(this.currentTool == "pan" && this.isPanning) {
         this.isPanning = false;
         document.body.style.cursor = "default";
-        console.log("panning offset", this.panOffset);
         this.redraw();
         return;
     }
@@ -1105,7 +1110,9 @@ private handleMouseDown = (event: MouseEvent) => {
     if (!this.ctx) return;
     event.stopPropagation();
     event.preventDefault();
-    this.redraw();
+
+    if(this.isDrawing || this.isErasing) this.redraw();
+
     if(this.isTextEditing) {
         this.redraw();
         return;

@@ -9,17 +9,20 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.0.1",
     "axios": "^1.7.9",
     "lodash": "^4.17.21",
     "lucide-react": "^0.473.0",
     "next": "15.1.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "roughjs": "^4.6.6",
+    "react-hook-form": "^7.55.0",
+    "react-hot-toast": "^2.5.2",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@repo/common": "workspace:*",
     "@repo/ui": "workspace:*",
     "@types/lodash": "^4.17.15",
     "@types/node": "^20",

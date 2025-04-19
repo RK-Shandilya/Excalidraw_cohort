@@ -2,14 +2,12 @@
 import React from 'react';
 import { 
   MousePointer2, 
-  Share2,
   Shapes, 
   Github,
   ArrowRight,
   Sparkles,
   Users,
   Shield,
-  LayoutDashboard
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -119,21 +117,6 @@ function Dashboard() {
                 title: "Enterprise Security",
                 description: "End-to-end encryption and permission controls for your peace of mind."
               },
-              {
-                icon: <LayoutDashboard className="w-10 h-10 text-cyan-600" />,
-                title: "Multiple Canvas Types",
-                description: "Flowcharts, mind maps, wireframes, and more - all in one place."
-              },
-              {
-                icon: <Share2 className="w-10 h-10 text-cyan-600" />,
-                title: "Easy Sharing",
-                description: "Export or share your diagrams with a simple link."
-              },
-              {
-                icon: <Sparkles className="w-10 h-10 text-cyan-600" />,
-                title: "Smart Templates",
-                description: "Jumpstart your creativity with professionally designed templates."
-              }
             ].map((feature, index) => (
               <div key={index} className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-gray-100">
                 <div className="w-14 h-14 flex items-center justify-center bg-cyan-50 rounded-xl mb-6">
@@ -158,9 +141,7 @@ function Dashboard() {
               <ul className="space-y-4">
                 {[
                   "Infinite zoomable canvas",
-                  "100+ customizable shapes",
-                  "Version history",
-                  "PDF & PNG export",
+                  "Customizable shapes",
                   "Keyboard shortcuts",
                   "Dark mode"
                 ].map((item, index) => (
@@ -177,7 +158,7 @@ function Dashboard() {
             </div>
             <div className="lg:w-1/2 relative">
               <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-200">
-                <video src='/Demo.mov' autoPlay={true} controls={true} muted className='w-full h-auto'></video>
+                <video src='/Demo2.mov' autoPlay={true} controls={true} muted className='w-full h-auto'></video>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
               </div>
             </div>

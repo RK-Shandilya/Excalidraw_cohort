@@ -19,7 +19,7 @@ model User {
   password  String
   name      String
   photo     String?         
-  chats     Chat[]
+  drawings  Drawing[]
   rooms     Room[]
 }
 
@@ -27,15 +27,15 @@ model Room {
   id        Int             @id @default(autoincrement())
   slug      String          @unique
   createdAt DateTime        @default(now())
-  chats     Chat[]  
+  drawings  Drawing[]  
   adminId   String
   admin     User            @relation(fields: [adminId], references: [id])
 }
 
-model Chat {
+model Drawing {
   id        Int             @id @default(autoincrement())
   roomId    Int
-  message   String
+  message   Json
   userId    String
   room      Room            @relation(fields: [roomId], references: [id])
   user      User            @relation(fields: [userId], references: [id])

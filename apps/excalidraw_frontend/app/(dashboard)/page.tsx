@@ -14,7 +14,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
-import Image from 'next/image';
 
 function Dashboard() {
     const router = useRouter();
@@ -22,9 +21,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Hero Section */}
       <header className="bg-gradient-to-br from-cyan-50 to-white via-90% relative overflow-hidden">
-        {/* Decorative elements */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-cyan-400 mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
           <div className="absolute top-40 right-32 w-64 h-64 rounded-full bg-blue-400 mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
@@ -87,7 +84,6 @@ function Dashboard() {
         </div>
       </header>
 
-      {/* Logo Cloud Section */}
       <div className="py-12 bg-gray-50">
         <div className="container mx-auto px-6">
           <p className="text-center text-gray-500 mb-8">Trusted by teams at</p>
@@ -99,7 +95,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Features Section */}
       <section className="py-20" id="features">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -152,7 +147,6 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* Product Showcase */}
       <section className="py-20 bg-gradient-to-br from-gray-50 to-cyan-50">
         <div className="container mx-auto px-6">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
@@ -183,13 +177,7 @@ function Dashboard() {
             </div>
             <div className="lg:w-1/2 relative">
               <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-200">
-                <Image
-                  width={800}
-                  height={600}
-                  src="https://images.unsplash.com/photo-1611224923853-80b023f02d71?auto=format&fit=crop&w=800&q=80"
-                  alt="DrawFlow in action"
-                  className="w-full h-auto"
-                />
+                <video src='/Demo.mov' autoPlay={true} controls={true} muted className='w-full h-auto'></video>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
               </div>
             </div>
@@ -197,29 +185,6 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-cyan-600 to-blue-600 text-white">
-        <div className="container mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to transform your ideas?</h2>
-          <p className="text-xl mb-10 max-w-2xl mx-auto opacity-90">
-            Join thousands of creators already using DrawFlow to visualize their best ideas.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button 
-              className="bg-white text-cyan-600 px-8 py-4 rounded-xl hover:bg-gray-100 transition-colors font-medium shadow-lg flex items-center justify-center mx-auto"
-              onClick={() => router.push(isSignin ? "/canvas" : "/signup")}
-            >
-              {isSignin ? "Open App" : "Get Started Free"}
-              <ArrowRight className="ml-3 w-5 h-5" />
-            </button>
-            <button className="border-2 border-white/30 text-white px-8 py-4 rounded-xl hover:border-white/60 transition-colors font-medium flex items-center justify-center mx-auto">
-              Contact Sales
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
       <footer className="bg-gray-900 text-white py-16">
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12">

@@ -1,8 +1,7 @@
 import {WebSocket} from 'ws'
 import jwt from 'jsonwebtoken'
-process.loadEnvFile("../../.env");
 const wss = new WebSocket.Server({port: 8080})
-
+process.loadEnvFile("../../.env");
 interface User {
     ws: WebSocket
     rooms: string[],
@@ -29,7 +28,6 @@ wss.on("connection", (ws: WebSocket, request)=> {
         ws.close();
         return;
     }
-    console.log("user connected");
 
     users.push({
         ws,
@@ -49,7 +47,6 @@ wss.on("connection", (ws: WebSocket, request)=> {
                 if(!currentUser.rooms.includes(parsedData.roomId)){
                     currentUser.rooms.push(parsedData.roomId);
                 }
-                console.log("room joined");
                 break;
 
             case "leaveRoom":
@@ -64,8 +61,6 @@ wss.on("connection", (ws: WebSocket, request)=> {
             case "draw":
                 const roomId = parsedData.roomId;
                 const drawing = parsedData.drawing;
-
-                console.log(drawing);
 
                 users.forEach((user) => {
                     if(user.rooms.includes(roomId)){

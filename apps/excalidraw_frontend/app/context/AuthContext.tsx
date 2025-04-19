@@ -1,7 +1,6 @@
 "use client";
 import React, { createContext, useState, useContext, useEffect, ReactNode } from "react";
 
-// Define the authentication context
 interface AuthContextType {
   isSignin: boolean;
   token: string | null;
@@ -9,7 +8,6 @@ interface AuthContextType {
   signOut: () => void;
 }
 
-// Create the context with a default value
 const AuthContext = createContext<AuthContextType>({
   isSignin: false,
   token: null,
@@ -17,12 +15,10 @@ const AuthContext = createContext<AuthContextType>({
   signOut: () => {},
 });
 
-// Create a provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isSignin, setIsSignin] = useState<boolean>(false);
   const [token, setToken] = useState<string | null>(null);
 
-  // Access localStorage inside useEffect to avoid SSR issues
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     if (storedToken) {
@@ -50,7 +46,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-// Custom hook for using auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

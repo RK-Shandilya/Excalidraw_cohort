@@ -22,17 +22,14 @@ const SignUp = () => {
   })
 
   const onSubmit: SubmitHandler<SignUpFormValues> = async (data) => {
-    console.log("Form data before submission:", data);
-    console.log(`${HTTP_BACKEND}/signup`)
     setIsSubmitting(true);
     try {
-      const response = await axios.post(`${HTTP_BACKEND}/signup`, {
+      await axios.post(`${HTTP_BACKEND}/signup`, {
         username: data.username.trim(),
         email: data.email.trim(),
         password: data.password,
         confirmPassword: data.confirmPassword
       });
-      console.log(response);
       toast.success('Account created successfully!');
       reset();
       router.push('/signin');

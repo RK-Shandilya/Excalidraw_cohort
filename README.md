@@ -1,6 +1,6 @@
 # DEMO
 <div align="center">
-  <img src="https://res.cloudinary.com/dup7mmwly/video/upload/f_gif,w_900/v1745062910/vuzh0bngaviamkfqq6t6.mov" alt="Turborepo Demo" />
+  <img src="https://res.cloudinary.com/dup7mmwly/video/upload/f_gif,w_600/v1745062910/vuzh0bngaviamkfqq6t6.mov" alt="Turborepo Demo" />
 </div>
 
 # Turborepo starter

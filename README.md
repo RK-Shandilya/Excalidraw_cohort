@@ -1,5 +1,5 @@
 # DEMO
-![Watch DEMO](https://res.cloudinary.com/dup7mmwly/video/upload/v1745083146/hfsypjmshgmirwgwwddd.mov)
+![Watch Demo](https://res.cloudinary.com/dup7mmwly/video/upload/q_auto,f_gif/v1745062910/vuzh0bngaviamkfqq6t6.mov)
 
 # Turborepo starter
 
